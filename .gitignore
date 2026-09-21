@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+settings.json
+.analysis/
+informes/
+Backups/
+logo.*
+*.ods
