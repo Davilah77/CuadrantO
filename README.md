@@ -17,3 +17,6 @@ Aplicación de escritorio para crear y controlar los cuadrantes semanales del re
 
 Instala las dependencias con `pip install -r requirements.txt` y ejecuta `python app.py`, o usa `iniciar_app.bat` en Windows.
 
+## Versión portable para Windows
+
+Con PyInstaller instalado, ejecuta `build_portable.ps1`. El paquete se genera en `release/` y mantiene sus datos junto al ejecutable.

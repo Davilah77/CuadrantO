@@ -9,3 +9,7 @@ informes/
 Backups/
 logo.*
 *.ods
+build/
+dist/
+release/
+*.spec
