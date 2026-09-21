@@ -1,0 +1,9 @@
+CUADRANTE PORTABLE PARA LINUX
+
+1. Descomprime todo el archivo TAR.GZ en una carpeta con permisos de escritura.
+2. Ejecuta el archivo Cuadrante. Si fuera necesario, habilita antes el permiso de ejecución.
+3. La base de datos, los ajustes y la carpeta de informes se crearán junto al ejecutable.
+4. Para mover la aplicación conservando los datos, copia la carpeta completa.
+5. La copia automática puede usar cualquier carpeta local o sincronizada que selecciones en Ajustes.
+
+Paquete destinado a distribuciones Linux x64 actuales con entorno gráfico.
