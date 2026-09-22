@@ -154,6 +154,13 @@ def download_and_stage(info: UpdateInfo) -> Path:
     return target
 
 
+def _clean_update_environment() -> dict[str, str]:
+    """Start the replacement as a new PyInstaller instance, not as a child."""
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("_PYI_")}
+    environment["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return environment
+
+
 def launch_installer(staged_executable: Path) -> None:
     current = Path(sys.executable).resolve()
     helper_root = staged_executable.parent.parent
@@ -168,7 +175,8 @@ def launch_installer(staged_executable: Path) -> None:
             "if(Test-Path -LiteralPath $backup){Remove-Item -LiteralPath $backup -Force};Move-Item -LiteralPath $Target -Destination $backup -Force;"
             "try{Move-Item -LiteralPath $replacement -Destination $Target -Force}catch{Move-Item -LiteralPath $backup -Destination $Target -Force;throw};"
             "$ok=$true;break}catch{if(!(Test-Path -LiteralPath $Target) -and (Test-Path -LiteralPath $backup)){Move-Item -LiteralPath $backup -Destination $Target -Force};Start-Sleep -Milliseconds 500}}\n"
-            "if($ok){try{Start-Process -FilePath $Target -WorkingDirectory $WorkDir}catch{"
+            "if($ok){Get-ChildItem Env: | Where-Object {$_.Name -like '_PYI_*'} | ForEach-Object {Remove-Item \"Env:$($_.Name)\"};"
+            "$env:PYINSTALLER_RESET_ENVIRONMENT='1';try{Start-Process -FilePath $Target -WorkingDirectory $WorkDir}catch{"
             "if(Test-Path -LiteralPath $Target){Remove-Item -LiteralPath $Target -Force};Move-Item -LiteralPath $backup -Destination $Target -Force;"
             "Start-Process -FilePath $Target -WorkingDirectory $WorkDir}}\n",
             encoding="utf-8",
@@ -178,6 +186,7 @@ def launch_installer(staged_executable: Path) -> None:
             ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script),
              str(os.getpid()), str(staged_executable), str(current), str(APP_DIR)],
             creationflags=creation_flags,
+            env=_clean_update_environment(),
         )
     else:
         script = helper_root / "instalar_actualizacion.sh"
@@ -191,4 +200,8 @@ def launch_installer(staged_executable: Path) -> None:
             encoding="utf-8",
         )
         script.chmod(0o755)
-        subprocess.Popen(["sh", str(script), str(os.getpid()), str(staged_executable), str(current), str(APP_DIR)], start_new_session=True)
+        subprocess.Popen(
+            ["sh", str(script), str(os.getpid()), str(staged_executable), str(current), str(APP_DIR)],
+            start_new_session=True,
+            env=_clean_update_environment(),
+        )

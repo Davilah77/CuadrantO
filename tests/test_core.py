@@ -93,6 +93,29 @@ class CuadranteTests(unittest.TestCase):
         self.assertFalse(is_newer("v0.1.9", "0.2.0-beta.1"))
         self.assertIsNone(version_key("una-version-invalida"))
 
+    def test_update_process_starts_with_clean_pyinstaller_environment(self):
+        with patch.dict(updater.os.environ, {"_PYI_APPLICATION_HOME_DIR": "temporal", "NORMAL": "valor"}, clear=True):
+            environment = updater._clean_update_environment()
+        self.assertNotIn("_PYI_APPLICATION_HOME_DIR", environment)
+        self.assertEqual(environment["NORMAL"], "valor")
+        self.assertEqual(environment["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+
+    def test_windows_update_helper_resets_pyinstaller_before_restart(self):
+        folder = Path(__file__).parent / "_launcher_test"
+        staged = folder / ".updates" / "0.2.3" / "nuevo" / "CuadrantO.exe"
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_bytes(b"nuevo")
+        with patch.object(updater.sys, "platform", "win32"), \
+                patch.object(updater.sys, "executable", str(folder / "CuadrantO.exe")), \
+                patch.object(updater, "APP_DIR", folder), \
+                patch.object(updater.subprocess, "Popen") as process:
+            updater.launch_installer(staged)
+        helper = staged.parent.parent / "instalar_actualizacion.ps1"
+        self.assertIn("PYINSTALLER_RESET_ENVIRONMENT", helper.read_text(encoding="utf-8"))
+        environment = process.call_args.kwargs["env"]
+        self.assertEqual(environment["PYINSTALLER_RESET_ENVIRONMENT"], "1")
+        shutil.rmtree(folder)
+
     def test_saved_windows_are_kept_inside_the_visible_desktop(self):
         with patch("core.window_state._screen_bounds", return_value=(0, 0, 1920, 1080)):
             self.assertEqual(_visible_geometry(object(), "780x760+3000+2000"), "780x760+1840+1000")
