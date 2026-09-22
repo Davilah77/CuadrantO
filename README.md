@@ -1,5 +1,7 @@
 # CuadrantO
 
+<img width="512" height="512" alt="logo_cuadrantO-23314" src="https://github.com/user-attachments/assets/451a36a3-cdfe-4d51-805b-ecb882f9a850" />
+
 Aplicación de escritorio para crear y controlar los cuadrantes semanales del restaurante.
 
 ## Funciones actuales
@@ -37,3 +39,6 @@ CuadrantO guarda los cuadrantes y ajustes localmente. No incorpora telemetría n
 Código abierto distribuido bajo la licencia MIT.
 
 La compilación de Linux se realiza realmente en Linux: PyInstaller no permite generar este ejecutable desde Windows. En Linux, la carpeta de copias puede seleccionarse manualmente en Ajustes; la detección automática de OneDrive solo está disponible en Windows.
+
+## Capturas
+<img width="1372" height="1230" alt="Captura" src="https://github.com/user-attachments/assets/fe08c2e8-d111-496b-84e7-e0ded502bbe9" />
