@@ -124,7 +124,7 @@ class ScheduleModule:
                     fg_color=("#F4E84A", "#756D10"), text_color=("#111111", "white"), corner_radius=4,
                 ).grid(row=row_index, column=0, columnspan=8, padx=2, pady=(7, 2), sticky="ew")
                 row_index += 1
-            ctk.CTkLabel(self.grid, text=employee["nombre"], width=235, anchor="w").grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+            ctk.CTkLabel(self.grid, text=employee["nombre"], width=235, anchor="w", font=ctk.CTkFont(weight="bold")).grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
             for day_index in range(7):
                 variable = ctk.StringVar(value="")
                 cell = ctk.CTkFrame(self.grid, width=120, height=28, fg_color=TABLE_SURFACE)
@@ -152,10 +152,10 @@ class ScheduleModule:
         ctk.CTkLabel(self.grid, text="Clientes en servicio", anchor="w", font=ctk.CTkFont(weight="bold"), fg_color=("#F4E84A", "#756D10"), text_color=("#111111", "white"), corner_radius=4).grid(row=row_index, column=0, columnspan=8, sticky="ew", pady=(4, 2))
         row_index += 1
         for service in ("desayuno", "almuerzo", "cena", "todo_incluido"):
-            ctk.CTkLabel(self.grid, text=service.replace("_", " ").title(), anchor="w").grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+            ctk.CTkLabel(self.grid, text=service.replace("_", " ").title(), anchor="w", font=ctk.CTkFont(weight="bold")).grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
             for day_index in range(7):
                 variable = ctk.StringVar(value="0")
-                ctk.CTkEntry(self.grid, textvariable=variable, width=120, justify="center").grid(row=row_index, column=day_index + 1, padx=2, pady=2)
+                ctk.CTkEntry(self.grid, textvariable=variable, width=120, justify="center", font=ctk.CTkFont(weight="bold")).grid(row=row_index, column=day_index + 1, padx=2, pady=2)
                 self.client_vars[(service, day_index)] = variable
             row_index += 1
 

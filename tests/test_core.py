@@ -55,7 +55,26 @@ class CuadranteTests(unittest.TestCase):
     def test_opening_turns_match_business_rule(self):
         with closing(database.connect()) as conn:
             opening = {row["codigo"] for row in conn.execute("SELECT codigo FROM turnos WHERE apertura=1")}
-        self.assertEqual(opening, {"d1", "dc1", "dc2", "dc3", "dc4", "dc5", "dc6"})
+        self.assertEqual(opening, {"d1", "dc1", "dc2", "dc3", "dc4"})
+
+    def test_dac_covers_all_services_for_twelve_hours(self):
+        with closing(database.connect()) as conn:
+            shift = conn.execute("SELECT * FROM turnos WHERE codigo='dac'").fetchone()
+        self.assertEqual(
+            (shift["entrada_manana"], shift["salida_manana"], shift["entrada_tarde"], shift["salida_tarde"]),
+            ("08:00", "16:00", "18:30", "22:30"),
+        )
+        self.assertEqual((shift["horas"], shift["desayuno"], shift["almuerzo"], shift["cena"]), (12, 1, 1, 1))
+
+    def test_catalogue_migration_does_not_overwrite_later_customization(self):
+        with database.transaction() as conn:
+            conn.execute("UPDATE turnos SET apertura=1 WHERE codigo='dc5'")
+            conn.execute("UPDATE turnos SET horas=11 WHERE codigo='dac'")
+        database.initialize_database()
+        with closing(database.connect()) as conn:
+            dc5 = conn.execute("SELECT apertura FROM turnos WHERE codigo='dc5'").fetchone()[0]
+            dac_hours = conn.execute("SELECT horas FROM turnos WHERE codigo='dac'").fetchone()[0]
+        self.assertEqual((dc5, dac_hours), (1, 11))
 
     def test_g1_is_guard_shift_for_lunch_and_dinner(self):
         with closing(database.connect()) as conn:
