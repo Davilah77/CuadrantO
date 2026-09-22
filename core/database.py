@@ -102,6 +102,10 @@ def initialize_database() -> None:
         CREATE TABLE IF NOT EXISTS app_meta(
             clave TEXT PRIMARY KEY, valor TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS ett_horas_semana(
+            semana TEXT NOT NULL, empleado_id INTEGER NOT NULL, horas_objetivo INTEGER NOT NULL DEFAULT 40,
+            PRIMARY KEY(semana,empleado_id), FOREIGN KEY(empleado_id) REFERENCES empleados(id)
+        );
         """)
         shift_columns = {row["name"] for row in conn.execute("PRAGMA table_info(turnos)")}
         if "guardia" not in shift_columns:

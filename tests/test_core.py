@@ -87,6 +87,11 @@ class CuadranteTests(unittest.TestCase):
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(asignaciones)")}
         self.assertTrue({"color", "nota"}.issubset(columns))
 
+    def test_ett_weekly_hour_targets_are_available(self):
+        with closing(database.connect()) as conn:
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(ett_horas_semana)")}
+        self.assertTrue({"semana", "empleado_id", "horas_objetivo"}.issubset(columns))
+
     def test_update_versions_follow_semantic_order(self):
         self.assertTrue(is_newer("v0.2.0", "0.2.0-beta.1"))
         self.assertTrue(is_newer("v0.2.0-beta.2", "0.2.0-beta.1"))

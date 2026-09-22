@@ -63,6 +63,9 @@ class ScheduleModule:
         self.coverage_labels = {}
         self.opening_labels = {}
         self.guard_labels = {}
+        self.ett_hour_vars = {}
+        self.ett_hour_widgets = {}
+        self.ett_targets = {}
         self._build()
         self.load_week()
 
@@ -107,6 +110,8 @@ class ScheduleModule:
         self.coverage_labels.clear()
         self.opening_labels.clear()
         self.guard_labels.clear()
+        self.ett_hour_vars.clear()
+        self.ett_hour_widgets.clear()
         self._load_catalogues()
         self.grid.grid_columnconfigure(0, weight=1)
         for column in range(1, 8):
@@ -124,7 +129,25 @@ class ScheduleModule:
                     fg_color=("#F4E84A", "#756D10"), text_color=("#111111", "white"), corner_radius=4,
                 ).grid(row=row_index, column=0, columnspan=8, padx=2, pady=(7, 2), sticky="ew")
                 row_index += 1
-            ctk.CTkLabel(self.grid, text=employee["nombre"], width=235, anchor="w", font=ctk.CTkFont(weight="bold")).grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+            if employee["categoria"] == "ETT":
+                employee_cell = ctk.CTkFrame(self.grid, width=235, height=28, fg_color=TABLE_SURFACE)
+                employee_cell.grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+                employee_cell.grid_propagate(False)
+                ctk.CTkLabel(employee_cell, text=employee["nombre"], anchor="w", font=ctk.CTkFont(weight="bold")).pack(side="left", fill="x", expand=True)
+                employee_id = employee["id"]
+                self.ett_targets.setdefault(employee_id, 40)
+                hour_var = ctk.StringVar(value="0/40 h")
+                hour_menu = ctk.CTkOptionMenu(
+                    employee_cell, values=[f"{hours} h" for hours in range(0, 61)], variable=hour_var,
+                    width=72, height=25, font=ctk.CTkFont(size=10, weight="bold"),
+                    dropdown_font=ctk.CTkFont(size=11),
+                    command=lambda value, emp=employee_id: self._ett_target_changed(emp, value),
+                )
+                hour_menu.pack(side="right", padx=(4, 0))
+                self.ett_hour_vars[employee_id] = hour_var
+                self.ett_hour_widgets[employee_id] = hour_menu
+            else:
+                ctk.CTkLabel(self.grid, text=employee["nombre"], width=235, anchor="w", font=ctk.CTkFont(weight="bold")).grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
             for day_index in range(7):
                 variable = ctk.StringVar(value="")
                 cell = ctk.CTkFrame(self.grid, width=120, height=28, fg_color=TABLE_SURFACE)
@@ -215,6 +238,36 @@ class ScheduleModule:
         self._paint_assignment((employee_id, day_index), value)
         self.recalculate()
 
+    def _ett_target_changed(self, employee_id, value):
+        try:
+            self.ett_targets[employee_id] = int(value.split()[0])
+        except (ValueError, IndexError):
+            return
+        self.recalculate()
+
+    @staticmethod
+    def _hours_text(value):
+        return str(int(value)) if float(value).is_integer() else f"{value:.1f}".replace(".", ",")
+
+    def _refresh_ett_hours(self):
+        for employee_id, variable in self.ett_hour_vars.items():
+            assigned = 0.0
+            for day_index in range(7):
+                shift = self.shifts.get(self.assignment_vars[(employee_id, day_index)].get())
+                if shift:
+                    assigned += float(shift["horas"])
+            target = self.ett_targets.get(employee_id, 40)
+            variable.set(f"{self._hours_text(assigned)}/{target} h")
+            if target == 0:
+                color = ("#707B7C", "#566263")
+            elif assigned == target:
+                color = ("#2E8B57", "#257346")
+            elif assigned > target:
+                color = ("#C0392B", "#A93226")
+            else:
+                color = ("#E67E22", "#CA6F1E")
+            self.ett_hour_widgets[employee_id].configure(fg_color=color, button_color=color)
+
     def _paint_assignment(self, key, value):
         widget = self.assignment_widgets[key]
         if value in self.shifts:
@@ -299,6 +352,12 @@ class ScheduleModule:
                 clients = {row["fecha"]: row for row in conn.execute(
                     "SELECT * FROM clientes WHERE fecha BETWEEN ? AND ?", (dates[0], dates[-1])
                 )}
+                ett_targets = {
+                    row["empleado_id"]: row["horas_objetivo"] for row in conn.execute(
+                        "SELECT empleado_id,horas_objetivo FROM ett_horas_semana WHERE semana=?", (dates[0],)
+                    )
+                }
+            self.ett_targets = {employee_id: int(ett_targets.get(employee_id, 40)) for employee_id in self.ett_hour_vars}
             self.reminders.clear()
             for (employee_id, day_index), variable in self.assignment_vars.items():
                 value = assignments.get((employee_id, dates[day_index]), "")
@@ -357,6 +416,7 @@ class ScheduleModule:
                 guard_label.configure(text=guards[0], fg_color=("#D7EBF7", "#245B78"), text_color=("gray10", "white"))
             else:
                 guard_label.configure(text="SIN GUARDIA", fg_color=("#FFD2B3", "#713B18"), text_color=("gray10", "white"))
+        self._refresh_ett_hours()
         employee_names = {row["id"]: row["nombre"] for row in self.employees}
         reminder_lines = []
         for (employee_id, day_index), reminder in sorted(self.reminders.items(), key=lambda item: (item[0][1], item[0][0])):
@@ -391,6 +451,11 @@ class ScheduleModule:
                 conn.executemany("""INSERT INTO clientes(fecha,desayuno,almuerzo,cena,todo_incluido)
                     VALUES (?,?,?,?,?) ON CONFLICT(fecha) DO UPDATE SET desayuno=excluded.desayuno,
                     almuerzo=excluded.almuerzo,cena=excluded.cena,todo_incluido=excluded.todo_incluido""", clients)
+                conn.execute("DELETE FROM ett_horas_semana WHERE semana=?", (dates[0],))
+                conn.executemany(
+                    "INSERT INTO ett_horas_semana(semana,empleado_id,horas_objetivo) VALUES (?,?,?)",
+                    [(dates[0], employee_id, self.ett_targets.get(employee_id, 40)) for employee_id in self.ett_hour_vars],
+                )
             self.recalculate()
             duplicates = [DAYS[index] for index, label in self.opening_labels.items() if label.cget("text").startswith("DUPLICADO")]
             warning = f"\n\nRevisa aperturas duplicadas: {', '.join(duplicates)}." if duplicates else ""
