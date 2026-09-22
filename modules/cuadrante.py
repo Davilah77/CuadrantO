@@ -133,7 +133,7 @@ class ScheduleModule:
                 cell.pack_propagate(False)
                 widget = ctk.CTkOptionMenu(
                     cell, values=self.options, variable=variable, width=92, height=28,
-                    font=ctk.CTkFont(size=10), dropdown_font=ctk.CTkFont(size=11),
+                    font=ctk.CTkFont(size=11), dropdown_font=ctk.CTkFont(size=11, weight="bold"),
                     command=lambda value, emp=employee["id"], day=day_index: self._assignment_changed(emp, day, value),
                 )
                 widget.pack(side="left")
@@ -217,6 +217,12 @@ class ScheduleModule:
 
     def _paint_assignment(self, key, value):
         widget = self.assignment_widgets[key]
+        if value in self.shifts:
+            widget.configure(font=ctk.CTkFont(size=12, weight="bold"))
+        elif value:
+            widget.configure(font=ctk.CTkFont(size=10, weight="bold"))
+        else:
+            widget.configure(font=ctk.CTkFont(size=11))
         reminder = self.reminders.get(key)
         color = REMINDER_COLORS.get(reminder["color"]) if reminder else VALUE_COLORS.get(value)
         if color:
