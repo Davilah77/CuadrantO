@@ -1,10 +1,16 @@
 import unittest
+import hashlib
+import io
+import shutil
+import zipfile
 from contextlib import closing
 from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 from core import database
+from core import updater
+from core.updater import UpdateInfo, is_newer, version_key
 from modules.cuadrante import parse_week
 
 
@@ -60,6 +66,36 @@ class CuadranteTests(unittest.TestCase):
         with closing(database.connect()) as conn:
             columns = {row["name"] for row in conn.execute("PRAGMA table_info(asignaciones)")}
         self.assertTrue({"color", "nota"}.issubset(columns))
+
+    def test_update_versions_follow_semantic_order(self):
+        self.assertTrue(is_newer("v0.2.0", "0.2.0-beta.1"))
+        self.assertTrue(is_newer("v0.2.0-beta.2", "0.2.0-beta.1"))
+        self.assertFalse(is_newer("v0.1.9", "0.2.0-beta.1"))
+        self.assertIsNone(version_key("una-version-invalida"))
+
+    def test_update_package_is_verified_and_staged(self):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as package:
+            package.writestr("CuadrantO.exe", b"portable-nuevo")
+        payload = archive.getvalue()
+        info = UpdateInfo(
+            version="9.0.0", tag="v9.0.0", title="Prueba", notes="", page_url="",
+            asset_name="CuadrantO-portable-9.0.0-windows-x64.zip", download_url="https://example.invalid/update.zip",
+            digest="sha256:" + hashlib.sha256(payload).hexdigest(),
+        )
+        folder = Path(__file__).parent / "_updater_test"
+        update_folder = folder / ".updates"
+        if update_folder.exists():
+            shutil.rmtree(update_folder)
+        with patch.object(updater, "APP_DIR", folder), \
+                patch.object(updater.sys, "frozen", True, create=True), \
+                patch.object(updater.sys, "platform", "win32"), \
+                patch.object(updater.urllib.request, "urlopen", return_value=io.BytesIO(payload)), \
+                patch.object(updater, "create_database_backup") as backup:
+            target = updater.download_and_stage(info)
+            self.assertEqual(target.read_bytes(), b"portable-nuevo")
+            backup.assert_called_once_with(reason="antes_actualizar")
+        shutil.rmtree(update_folder)
 
 
 if __name__ == "__main__":

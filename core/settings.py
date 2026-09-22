@@ -2,11 +2,11 @@ import json
 import os
 from pathlib import Path
 
-from core.paths import APP_DIR, SETTINGS_PATH
+from core.paths import APP_DIR, SETTINGS_PATH, resource_path
 
 
 DEFAULT_SETTINGS = {
-    "app_name": "Cuadrante",
+    "app_name": "CuadrantO",
     "font_scale": 1.0,
     "appearance_mode": "Dark",
     "logo_path": "",
@@ -14,6 +14,8 @@ DEFAULT_SETTINGS = {
     "database_path": "cuadrante.db",
     "backup_on_start": False,
     "backup_directory": "",
+    "check_updates_on_start": True,
+    "include_prereleases": True,
     "coverage": {
         "desayuno": {"yellow": 4, "green": 5, "purple": 6},
         "almuerzo": {"yellow": 5, "green": 6, "purple": 7},
@@ -62,5 +64,12 @@ def backup_directory() -> Path | None:
         path = Path(value).expanduser()
         return path if path.is_absolute() else APP_DIR / path
     root = detected_onedrive()
-    return root / "Cuadrante" / "Backups" if root else None
+    return root / "CuadrantO" / "Backups" if root else None
 
+
+def app_logo_path() -> Path:
+    value = str(load_settings().get("logo_path") or "").strip()
+    if value:
+        path = Path(value).expanduser()
+        return path if path.is_absolute() else APP_DIR / path
+    return resource_path("assets/CuadrantO.png")

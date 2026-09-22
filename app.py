@@ -1,11 +1,15 @@
 import customtkinter as ctk
-from PIL import Image
+from PIL import Image, ImageTk
+import threading
+import webbrowser
 from tkinter import filedialog, messagebox
 
 from core.backup import backup_on_start_if_enabled
 from core.database import initialize_database
-from core.paths import APP_DIR
-from core.settings import backup_directory, configured_path, detected_onedrive, load_settings, save_settings
+from core.paths import APP_DIR, resource_path
+from core.settings import app_logo_path, backup_directory, configured_path, detected_onedrive, load_settings, save_settings
+from core.updater import RELEASES_URL, UpdateError, check_for_update, download_and_stage, launch_installer
+from core.version import __version__
 from modules.catalogos import employee_manager, shift_manager
 from modules.cuadrante import build_cuadrante
 
@@ -29,6 +33,7 @@ class CuadranteApp(ctk.CTk):
         except Exception as exc:
             self.backup_error = str(exc)
         self._build_header()
+        self._build_update_banner()
         self.tabs = ctk.CTkTabview(self, corner_radius=10)
         self.tabs.pack(fill="both", expand=True, padx=15, pady=10)
         tab = self.tabs.add("Cuadrante semanal")
@@ -36,6 +41,8 @@ class CuadranteApp(ctk.CTk):
         self.schedule = tab._controller
         if self.backup_error:
             self.after(250, lambda: messagebox.showwarning("Copia de seguridad", self.backup_error, parent=self))
+        if load_settings().get("check_updates_on_start", True):
+            self.after(1200, lambda: self.check_updates(silent=True))
 
     def _build_header(self):
         header = ctk.CTkFrame(self, corner_radius=10)
@@ -45,13 +52,26 @@ class CuadranteApp(ctk.CTk):
         titles.pack(side="left", padx=15, pady=14)
         self.title_label = ctk.CTkLabel(titles, text="", font=ctk.CTkFont(size=22, weight="bold"))
         self.title_label.pack(anchor="w")
-        ctk.CTkLabel(titles, text="Planificación semanal de turnos y cobertura de servicios", text_color="gray").pack(anchor="w")
+        self.subtitle_label = ctk.CTkLabel(titles, text="", text_color="gray")
+        self.subtitle_label.pack(anchor="w")
         self.theme_switch = ctk.CTkSwitch(header, text="Modo oscuro", command=self._toggle_theme)
         if str(load_settings().get("appearance_mode", "Dark")).lower() == "dark":
             self.theme_switch.select()
         self.theme_switch.pack(side="right", padx=(8, 18))
         ctk.CTkButton(header, text="⚙", width=42, height=36, font=ctk.CTkFont(size=20), command=self.open_settings).pack(side="right", padx=5)
+        self.update_button = ctk.CTkButton(header, text="↻", width=42, height=36, font=ctk.CTkFont(size=20), command=self.check_updates)
+        self.update_button.pack(side="right", padx=5)
+        ctk.CTkButton(header, text="ⓘ", width=42, height=36, font=ctk.CTkFont(size=18), command=self.open_about).pack(side="right", padx=5)
         self._refresh_branding()
+
+    def _build_update_banner(self):
+        self.available_update = None
+        self.update_banner = ctk.CTkFrame(self, fg_color=("#D7EBF7", "#173E55"), corner_radius=8)
+        self.update_banner_label = ctk.CTkLabel(self.update_banner, text="", anchor="w", font=ctk.CTkFont(weight="bold"))
+        self.update_banner_label.pack(side="left", fill="x", expand=True, padx=14, pady=9)
+        ctk.CTkButton(self.update_banner, text="Ahora no", width=82, fg_color="gray45", command=self.update_banner.pack_forget).pack(side="right", padx=(4, 10), pady=7)
+        ctk.CTkButton(self.update_banner, text="Actualizar", width=92, command=self.install_available_update).pack(side="right", padx=4, pady=7)
+        ctk.CTkButton(self.update_banner, text="Novedades", width=90, command=self.show_release_notes).pack(side="right", padx=4, pady=7)
 
     def _toggle_theme(self):
         mode = "Dark" if self.theme_switch.get() else "Light"
@@ -62,25 +82,124 @@ class CuadranteApp(ctk.CTk):
 
     def _refresh_branding(self):
         settings = load_settings()
-        name = str(settings.get("app_name") or "Cuadrante")
-        self.title(f"{name} - Cuadrantes")
-        self.title_label.configure(text=name)
-        value = str(settings.get("logo_path") or "").strip()
-        if value:
-            path = configured_path("logo_path")
-            if path.is_file():
-                try:
-                    image = Image.open(path)
-                    image.thumbnail((64, 64), Image.Resampling.LANCZOS)
-                    self._logo_image = ctk.CTkImage(light_image=image, dark_image=image, size=image.size)
-                    self.logo_label.configure(image=self._logo_image)
-                    if not self.logo_label.winfo_manager():
-                        self.logo_label.pack(side="left", padx=(15, 0), pady=8, before=self.title_label.master)
-                    return
-                except OSError:
-                    pass
+        name = str(settings.get("app_name") or "CuadrantO")
+        self.title(f"{name} · CuadrantO {__version__}")
+        self.title_label.configure(text=f"CuadrantO · versión {__version__}")
+        subtitle = "Planificación semanal de turnos y cobertura de servicios"
+        self.subtitle_label.configure(text=f"{name} · {subtitle}" if name.lower() != "cuadranto" else subtitle)
+        product_icon = resource_path("assets/CuadrantO.png")
+        if product_icon.is_file():
+            try:
+                self._window_icon = ImageTk.PhotoImage(Image.open(product_icon).convert("RGBA"))
+                self.iconphoto(True, self._window_icon)
+            except OSError:
+                pass
+        path = app_logo_path()
+        if path.is_file():
+            try:
+                image = Image.open(path).convert("RGBA")
+                image.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                self._logo_image = ctk.CTkImage(light_image=image, dark_image=image, size=image.size)
+                self.logo_label.configure(image=self._logo_image)
+                if not self.logo_label.winfo_manager():
+                    self.logo_label.pack(side="left", padx=(15, 0), pady=8, before=self.title_label.master)
+                return
+            except OSError:
+                pass
         self.logo_label.configure(image=None)
         self.logo_label.pack_forget()
+
+    def check_updates(self, silent=False):
+        self.update_button.configure(state="disabled", text="…")
+        include_beta = bool(load_settings().get("include_prereleases", True))
+
+        def work():
+            try:
+                result = check_for_update(include_beta)
+                self.after(0, lambda: self._update_check_finished(result, silent, None))
+            except Exception as exc:
+                self.after(0, lambda error=exc: self._update_check_finished(None, silent, error))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_check_finished(self, result, silent, error):
+        self.update_button.configure(state="normal", text="↻")
+        if error:
+            if not silent:
+                messagebox.showwarning("Actualizaciones", str(error), parent=self)
+            return
+        if result is None:
+            if not silent:
+                messagebox.showinfo("Actualizaciones", f"CuadrantO {__version__} es la versión más reciente.", parent=self)
+            return
+        self.available_update = result
+        self.update_banner_label.configure(text=f"Nueva versión disponible: CuadrantO {result.version}")
+        if not self.update_banner.winfo_manager():
+            self.update_banner.pack(fill="x", padx=15, pady=(5, 0), before=self.tabs)
+
+    def show_release_notes(self):
+        if not self.available_update:
+            return
+        notes = self.available_update.notes.strip() or "Esta versión no incluye notas adicionales."
+        window = ctk.CTkToplevel(self)
+        window.title(f"Novedades · {self.available_update.version}")
+        window.geometry("650x500")
+        window.transient(self)
+        ctk.CTkLabel(window, text=self.available_update.title, font=ctk.CTkFont(size=19, weight="bold")).pack(pady=(20, 10))
+        text = ctk.CTkTextbox(window, wrap="word")
+        text.pack(fill="both", expand=True, padx=20, pady=(0, 12))
+        text.insert("1.0", notes)
+        text.configure(state="disabled")
+        ctk.CTkButton(window, text="Abrir en GitHub", command=lambda: webbrowser.open(self.available_update.page_url)).pack(pady=(0, 18))
+
+    def install_available_update(self):
+        info = self.available_update
+        if not info:
+            return
+        if not messagebox.askyesno(
+            "Instalar actualización",
+            f"Se descargará CuadrantO {info.version}.\n\nAntes de actualizar se creará una copia de seguridad y la aplicación se reiniciará. ¿Continuar?",
+            parent=self,
+        ):
+            return
+        self.update_banner_label.configure(text=f"Descargando CuadrantO {info.version}…")
+
+        def work():
+            try:
+                staged = download_and_stage(info)
+                launch_installer(staged)
+                self.after(0, self.destroy)
+            except Exception as exc:
+                self.after(0, lambda error=exc: self._update_install_failed(error))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _update_install_failed(self, error):
+        self.update_banner_label.configure(text=f"Nueva versión disponible: CuadrantO {self.available_update.version}")
+        messagebox.showerror("No se pudo actualizar", str(error), parent=self)
+
+    def open_about(self):
+        window = ctk.CTkToplevel(self)
+        window.title("Acerca de CuadrantO")
+        window.geometry("620x560")
+        window.transient(self)
+        logo_path = resource_path("assets/CuadrantO.png")
+        if logo_path.is_file():
+            image = Image.open(logo_path).convert("RGBA")
+            image.thumbnail((115, 115), Image.Resampling.LANCZOS)
+            window._about_logo = ctk.CTkImage(light_image=image, dark_image=image, size=image.size)
+            ctk.CTkLabel(window, text="", image=window._about_logo).pack(pady=(20, 5))
+        ctk.CTkLabel(window, text="CuadrantO", font=ctk.CTkFont(size=25, weight="bold")).pack()
+        ctk.CTkLabel(window, text=f"Versión {__version__}", text_color="gray").pack(pady=(2, 15))
+        description = (
+            "Aplicación de código abierto para planificar turnos y comprobar la cobertura de los servicios.\n\n"
+            "Programado por Davilah.\n\n"
+            "CuadrantO no recopila, analiza ni envía al desarrollador datos personales, cuadrantes, empleados ni información de uso. "
+            "Los datos se almacenan localmente. Las funciones de actualización y copia en la nube solo se conectan a GitHub y OneDrive cuando están habilitadas.\n\n"
+            "Distribuido con licencia MIT."
+        )
+        ctk.CTkLabel(window, text=description, wraplength=540, justify="left").pack(fill="x", padx=35)
+        ctk.CTkButton(window, text="Repositorio y código fuente", command=lambda: webbrowser.open("https://github.com/Davilah77/cuadrante")).pack(pady=22)
 
     def open_employee_manager(self):
         employee_manager(self, self.schedule.refresh_catalogues)
@@ -102,7 +221,7 @@ class CuadranteApp(ctk.CTk):
             ctk.CTkLabel(body, text=text, font=ctk.CTkFont(size=15, weight="bold")).pack(anchor="w", pady=(12, 5))
 
         heading("Identidad y visualización")
-        name = ctk.StringVar(value=str(current.get("app_name", "Cuadrante")))
+        name = ctk.StringVar(value=str(current.get("app_name", "CuadrantO")))
         ctk.CTkEntry(body, textvariable=name, placeholder_text="Nombre de la aplicación").pack(fill="x", pady=(0, 8))
         logo = ctk.StringVar(value=str(current.get("logo_path", "")))
         logo_row = ctk.CTkFrame(body, fg_color="transparent")
@@ -129,11 +248,18 @@ class CuadranteApp(ctk.CTk):
         def detect():
             root = detected_onedrive()
             if root:
-                backup.set(str(root / "Cuadrante" / "Backups"))
+                backup.set(str(root / "CuadrantO" / "Backups"))
             else:
                 messagebox.showwarning("OneDrive", "No se ha detectado una carpeta local de OneDrive.", parent=window)
 
         ctk.CTkButton(body, text="Detectar OneDrive", width=150, command=detect).pack(anchor="e", pady=(0, 8))
+
+        heading("Actualizaciones")
+        check_updates_on_start = ctk.BooleanVar(value=bool(current.get("check_updates_on_start", True)))
+        include_prereleases = ctk.BooleanVar(value=bool(current.get("include_prereleases", True)))
+        ctk.CTkSwitch(body, text="Buscar actualizaciones al iniciar", variable=check_updates_on_start).pack(anchor="w", pady=4)
+        ctk.CTkSwitch(body, text="Incluir versiones beta", variable=include_prereleases).pack(anchor="w", pady=4)
+        ctk.CTkLabel(body, text="La instalación siempre solicitará confirmación y creará una copia de seguridad.", text_color="gray").pack(anchor="w", pady=(0, 8))
 
         heading("Cobertura mínima por servicio")
         ctk.CTkLabel(body, text="Amarillo avisa de cobertura justa; verde es la dotación prevista; morado indica personal por encima de la previsión.", text_color="gray", wraplength=700, justify="left").pack(anchor="w", pady=(0, 8))
@@ -164,6 +290,8 @@ class CuadranteApp(ctk.CTk):
                     "font_scale": scale, "reports_directory": reports.get().strip(),
                     "database_path": database.get().strip(), "backup_on_start": backup_enabled.get(),
                     "backup_directory": backup.get().strip(), "coverage": coverage,
+                    "check_updates_on_start": check_updates_on_start.get(),
+                    "include_prereleases": include_prereleases.get(),
                 }
                 save_settings(values)
                 configured_path("reports_directory").mkdir(parents=True, exist_ok=True)
@@ -205,4 +333,3 @@ class CuadranteApp(ctk.CTk):
 
 if __name__ == "__main__":
     CuadranteApp().mainloop()
-

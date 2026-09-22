@@ -108,6 +108,8 @@ class ScheduleModule:
         self.guard_labels.clear()
         self._load_catalogues()
         self.grid.grid_columnconfigure(0, weight=1)
+        for column in range(1, 8):
+            self.grid.grid_columnconfigure(column, minsize=122, weight=0)
         ctk.CTkLabel(self.grid, text="Empleado", width=235, anchor="w", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=2, pady=4, sticky="ew")
         for day_index, day in enumerate(DAYS):
             ctk.CTkLabel(self.grid, text=day, width=120, font=ctk.CTkFont(weight="bold")).grid(row=0, column=day_index + 1, padx=2, pady=4)
@@ -124,10 +126,13 @@ class ScheduleModule:
             ctk.CTkLabel(self.grid, text=employee["nombre"], width=235, anchor="w").grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
             for day_index in range(7):
                 variable = ctk.StringVar(value="")
-                cell = ctk.CTkFrame(self.grid, width=120, fg_color=TABLE_SURFACE)
+                cell = ctk.CTkFrame(self.grid, width=120, height=28, fg_color=TABLE_SURFACE)
                 cell.grid(row=row_index, column=day_index + 1, padx=2, pady=2)
+                cell.grid_propagate(False)
+                cell.pack_propagate(False)
                 widget = ctk.CTkOptionMenu(
-                    cell, values=self.options, variable=variable, width=92,
+                    cell, values=self.options, variable=variable, width=92, height=28,
+                    font=ctk.CTkFont(size=10), dropdown_font=ctk.CTkFont(size=11),
                     command=lambda value, emp=employee["id"], day=day_index: self._assignment_changed(emp, day, value),
                 )
                 widget.pack(side="left")

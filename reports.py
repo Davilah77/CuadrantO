@@ -7,7 +7,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from core.settings import configured_path, load_settings
+from core.settings import app_logo_path, configured_path, load_settings
 from modules.cuadrante import DAYS, REMINDER_COLORS
 
 
@@ -29,13 +29,11 @@ def export_schedule_pdf(module, monday):
         topMargin=8 * mm, bottomMargin=8 * mm,
     )
     story = []
-    logo = str(settings.get("logo_path") or "").strip()
-    if logo:
-        logo_path = configured_path("logo_path")
-        if logo_path.is_file():
-            story.append(Image(str(logo_path), width=18 * mm, height=18 * mm))
+    logo_path = app_logo_path()
+    if logo_path.is_file():
+        story.append(Image(str(logo_path), width=18 * mm, height=18 * mm, kind="proportional"))
     title_style = ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=15, alignment=TA_CENTER, spaceAfter=4)
-    story.append(Paragraph(str(settings.get("app_name") or "Cuadrante"), title_style))
+    story.append(Paragraph(str(settings.get("app_name") or "CuadrantO"), title_style))
     story.append(Paragraph(f"Cuadrante del {monday:%d/%m/%Y} al {(monday + timedelta(days=6)):%d/%m/%Y}", title_style))
     story.append(Spacer(1, 3 * mm))
 

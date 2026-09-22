@@ -18,11 +18,13 @@ jobs:
           - os: windows-latest
             platform: windows-x64
             label: Windows x64
-            executable: Cuadrante.exe
+            executable: CuadrantO.exe
+            icon: assets/CuadrantO.ico
           - os: ubuntu-24.04
             platform: linux-x64
             label: Linux x64
-            executable: Cuadrante
+            executable: CuadrantO
+            icon: assets/CuadrantO.png
 
     runs-on: ${{ matrix.os }}
 
@@ -47,7 +49,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Compilar aplicación
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name Cuadrante app.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name CuadrantO --icon "${{ matrix.icon }}" --add-data "assets:assets" app.py
 
       - name: Determinar versión
         id: version
@@ -64,27 +66,27 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $folder = "package/Cuadrante"
+          $folder = "package/CuadrantO"
           New-Item -ItemType Directory -Force -Path $folder | Out-Null
           Copy-Item "dist/${{ matrix.executable }}" $folder
           Copy-Item "LEEME-PORTABLE.txt" $folder
-          Compress-Archive -Path "$folder/*" -DestinationPath "Cuadrante-portable-${{ steps.version.outputs.value }}-${{ matrix.platform }}.zip"
+          Compress-Archive -Path "$folder/*" -DestinationPath "CuadrantO-portable-${{ steps.version.outputs.value }}-${{ matrix.platform }}.zip"
 
       - name: Empaquetar Linux
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          mkdir -p package/Cuadrante
-          cp "dist/${{ matrix.executable }}" package/Cuadrante/
-          cp LEEME-LINUX.txt package/Cuadrante/
-          chmod +x package/Cuadrante/Cuadrante
-          tar -C package/Cuadrante -czf "Cuadrante-portable-${{ steps.version.outputs.value }}-${{ matrix.platform }}.tar.gz" .
+          mkdir -p package/CuadrantO
+          cp "dist/${{ matrix.executable }}" package/CuadrantO/
+          cp LEEME-LINUX.txt package/CuadrantO/
+          chmod +x package/CuadrantO/CuadrantO
+          tar -C package/CuadrantO -czf "CuadrantO-portable-${{ steps.version.outputs.value }}-${{ matrix.platform }}.tar.gz" .
 
       - name: Guardar paquete
         uses: actions/upload-artifact@v6
         with:
-          name: Cuadrante-${{ matrix.platform }}
-          path: Cuadrante-portable-*
+          name: CuadrantO-${{ matrix.platform }}
+          path: CuadrantO-portable-*
           if-no-files-found: error
 
       - name: Adjuntar paquete al release
@@ -92,4 +94,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: gh release upload "${{ github.event.release.tag_name }}" Cuadrante-portable-* --clobber
+        run: gh release upload "${{ github.event.release.tag_name }}" CuadrantO-portable-* --clobber

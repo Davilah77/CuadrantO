@@ -1,10 +1,9 @@
-CUADRANTE PORTABLE 0.1.0
+CUADRANTO PORTABLE PARA WINDOWS
 
 1. Descomprime todo el archivo ZIP en una carpeta con permisos de escritura.
-2. Ejecuta Cuadrante.exe.
+2. Ejecuta CuadrantO.exe.
 3. Windows puede mostrar un aviso de SmartScreen porque esta versión de prueba no está firmada digitalmente.
 4. La base de datos, los ajustes y la carpeta de informes se crearán junto al ejecutable.
 5. Para mover la aplicación conservando los datos, copia la carpeta completa.
 
-Esta es una versión de prueba previa al instalador.
-
+El botón de actualización consulta exclusivamente los paquetes publicados en el repositorio oficial.
