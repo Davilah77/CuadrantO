@@ -5,6 +5,7 @@ import customtkinter as ctk
 
 from core.database import connect, transaction
 from core.settings import load_settings
+from core.window_state import remember_window
 
 
 DAYS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
@@ -242,7 +243,7 @@ class ScheduleModule:
         current = self.reminders.get((employee_id, day_index), {"color": "Amarillo", "nota": ""})
         dialog = ctk.CTkToplevel(self.parent)
         dialog.title("Recordatorio especial")
-        dialog.geometry("540x340")
+        remember_window(dialog, "shift_reminder", "540x340")
         dialog.transient(self.parent.winfo_toplevel())
         dialog.grab_set()
         ctk.CTkLabel(

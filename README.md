@@ -11,6 +11,8 @@ Aplicación de escritorio para crear y controlar los cuadrantes semanales del re
 - Gestión de empleados y catálogo de turnos.
 - Umbrales de cobertura configurables.
 - Tema claro/oscuro persistente, nombre, logo y tamaño de fuente.
+- Posición, tamaño y estado maximizado recordados para la ventana principal y las ventanas auxiliares.
+- Icono propio de CuadrantO separado del logo configurable de la empresa.
 - Exportación a PDF y copias automáticas de la base de datos en OneDrive.
 - Comprobación de actualizaciones desde GitHub con instalación confirmada y copia de seguridad previa.
 

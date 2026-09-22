@@ -11,6 +11,7 @@ from unittest.mock import patch
 from core import database
 from core import updater
 from core.updater import UpdateInfo, is_newer, version_key
+from core.window_state import _visible_geometry
 from modules.cuadrante import parse_week
 
 
@@ -72,6 +73,11 @@ class CuadranteTests(unittest.TestCase):
         self.assertTrue(is_newer("v0.2.0-beta.2", "0.2.0-beta.1"))
         self.assertFalse(is_newer("v0.1.9", "0.2.0-beta.1"))
         self.assertIsNone(version_key("una-version-invalida"))
+
+    def test_saved_windows_are_kept_inside_the_visible_desktop(self):
+        with patch("core.window_state._screen_bounds", return_value=(0, 0, 1920, 1080)):
+            self.assertEqual(_visible_geometry(object(), "780x760+3000+2000"), "780x760+1840+1000")
+            self.assertEqual(_visible_geometry(object(), "780x760-3000-2000"), "780x760-700+0")
 
     def test_update_package_is_verified_and_staged(self):
         archive = io.BytesIO()

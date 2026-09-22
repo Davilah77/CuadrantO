@@ -3,6 +3,7 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from core.database import connect, transaction
+from core.window_state import remember_window
 
 
 CATEGORIES = ("MAITRE", "JEFES DE SECTOR", "CAMAREROS", "ETT")
@@ -11,7 +12,7 @@ CATEGORIES = ("MAITRE", "JEFES DE SECTOR", "CAMAREROS", "ETT")
 def employee_manager(app, on_change):
     window = ctk.CTkToplevel(app)
     window.title("Gestionar empleados")
-    window.geometry("760x620")
+    remember_window(window, "employees", "760x620")
     window.transient(app)
     window.grab_set()
     listing = ctk.CTkScrollableFrame(window)
@@ -38,7 +39,7 @@ def employee_manager(app, on_change):
             row = conn.execute("SELECT categoria,nombre FROM empleados WHERE id=?", (employee_id,)).fetchone() if employee_id else None
         dialog = ctk.CTkToplevel(window)
         dialog.title("Modificar empleado" if row else "Añadir empleado")
-        dialog.geometry("460x260")
+        remember_window(dialog, "employee_editor", "460x260")
         dialog.transient(window)
         dialog.grab_set()
         category = ctk.StringVar(value=row["categoria"] if row else CATEGORIES[-1])
@@ -80,7 +81,7 @@ def employee_manager(app, on_change):
 def shift_manager(app, on_change):
     window = ctk.CTkToplevel(app)
     window.title("Gestionar turnos")
-    window.geometry("1050x680")
+    remember_window(window, "shifts", "1050x680")
     window.transient(app)
     window.grab_set()
     listing = ctk.CTkScrollableFrame(window)
@@ -110,7 +111,7 @@ def shift_manager(app, on_change):
             row = conn.execute("SELECT * FROM turnos WHERE codigo=?", (code,)).fetchone() if code else None
         dialog = ctk.CTkToplevel(window)
         dialog.title("Modificar turno" if row else "Añadir turno")
-        dialog.geometry("620x610")
+        remember_window(dialog, "shift_editor", "620x610")
         dialog.transient(window)
         dialog.grab_set()
         fields = {}

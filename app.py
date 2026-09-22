@@ -1,5 +1,6 @@
 import customtkinter as ctk
 from PIL import Image, ImageTk
+import sys
 import threading
 import webbrowser
 from tkinter import filedialog, messagebox
@@ -10,11 +11,21 @@ from core.paths import APP_DIR, resource_path
 from core.settings import app_logo_path, backup_directory, configured_path, detected_onedrive, load_settings, save_settings
 from core.updater import RELEASES_URL, UpdateError, check_for_update, download_and_stage, launch_installer
 from core.version import __version__
+from core.window_state import remember_window
 from modules.catalogos import employee_manager, shift_manager
 from modules.cuadrante import build_cuadrante
 
 
 initial = load_settings()
+
+if sys.platform == "win32":
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Davilah.CuadrantO")
+    except Exception:
+        pass
+
 ctk.set_appearance_mode(initial.get("appearance_mode", "Dark"))
 ctk.set_default_color_theme("blue")
 ctk.set_widget_scaling(float(initial.get("font_scale", 1.0)))
@@ -24,8 +35,8 @@ class CuadranteApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         initialize_database()
-        self.geometry("1380x880")
         self.minsize(1120, 720)
+        remember_window(self, "main", "1380x880")
         self.last_backup = None
         self.backup_error = None
         try:
@@ -47,6 +58,8 @@ class CuadranteApp(ctk.CTk):
     def _build_header(self):
         header = ctk.CTkFrame(self, corner_radius=10)
         header.pack(fill="x", padx=15, pady=(15, 5))
+        self.product_icon_label = ctk.CTkLabel(header, text="", width=1)
+        self.product_icon_label.pack(side="left", padx=(15, 0), pady=8)
         self.logo_label = ctk.CTkLabel(header, text="", width=1)
         titles = ctk.CTkFrame(header, fg_color="transparent")
         titles.pack(side="left", padx=15, pady=14)
@@ -90,12 +103,26 @@ class CuadranteApp(ctk.CTk):
         product_icon = resource_path("assets/CuadrantO.png")
         if product_icon.is_file():
             try:
-                self._window_icon = ImageTk.PhotoImage(Image.open(product_icon).convert("RGBA"))
+                icon_image = Image.open(product_icon).convert("RGBA")
+                if icon_image.getbbox():
+                    icon_image = icon_image.crop(icon_image.getbbox())
+                self._window_icon = ImageTk.PhotoImage(icon_image)
                 self.iconphoto(True, self._window_icon)
+                header_icon = icon_image.copy()
+                header_icon.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                self._product_icon_image = ctk.CTkImage(light_image=header_icon, dark_image=header_icon, size=header_icon.size)
+                self.product_icon_label.configure(image=self._product_icon_image)
             except OSError:
                 pass
+        if sys.platform == "win32":
+            ico_path = resource_path("assets/CuadrantO.ico")
+            if ico_path.is_file():
+                try:
+                    self.iconbitmap(str(ico_path))
+                except Exception:
+                    pass
         path = app_logo_path()
-        if path.is_file():
+        if path and path.is_file():
             try:
                 image = Image.open(path).convert("RGBA")
                 image.thumbnail((64, 64), Image.Resampling.LANCZOS)
@@ -143,7 +170,7 @@ class CuadranteApp(ctk.CTk):
         notes = self.available_update.notes.strip() or "Esta versión no incluye notas adicionales."
         window = ctk.CTkToplevel(self)
         window.title(f"Novedades · {self.available_update.version}")
-        window.geometry("650x500")
+        remember_window(window, "release_notes", "650x500")
         window.transient(self)
         ctk.CTkLabel(window, text=self.available_update.title, font=ctk.CTkFont(size=19, weight="bold")).pack(pady=(20, 10))
         text = ctk.CTkTextbox(window, wrap="word")
@@ -181,7 +208,7 @@ class CuadranteApp(ctk.CTk):
     def open_about(self):
         window = ctk.CTkToplevel(self)
         window.title("Acerca de CuadrantO")
-        window.geometry("620x560")
+        remember_window(window, "about", "620x560")
         window.transient(self)
         logo_path = resource_path("assets/CuadrantO.png")
         if logo_path.is_file():
@@ -210,7 +237,7 @@ class CuadranteApp(ctk.CTk):
     def open_settings(self):
         window = ctk.CTkToplevel(self)
         window.title("Ajustes")
-        window.geometry("780x760")
+        remember_window(window, "settings", "780x760")
         window.transient(self)
         window.grab_set()
         body = ctk.CTkScrollableFrame(window, fg_color="transparent")
