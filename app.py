@@ -199,7 +199,7 @@ class CuadranteApp(ctk.CTk):
             "Distribuido con licencia MIT."
         )
         ctk.CTkLabel(window, text=description, wraplength=540, justify="left").pack(fill="x", padx=35)
-        ctk.CTkButton(window, text="Repositorio y código fuente", command=lambda: webbrowser.open("https://github.com/Davilah77/cuadrante")).pack(pady=22)
+        ctk.CTkButton(window, text="Repositorio y código fuente", command=lambda: webbrowser.open("https://github.com/Davilah77/CuadrantO")).pack(pady=22)
 
     def open_employee_manager(self):
         employee_manager(self, self.schedule.refresh_catalogues)

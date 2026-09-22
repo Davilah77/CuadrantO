@@ -19,7 +19,7 @@ from core.version import __version__
 
 # GitHub mantiene redirecciones cuando cambia el nombre del repositorio. Usar
 # esta ruta histórica permite actualizar instalaciones anteriores al cambio.
-GITHUB_REPOSITORY = "Davilah77/cuadrante"
+GITHUB_REPOSITORY = "Davilah77/CuadrantO"
 RELEASES_API = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/releases?per_page=20"
 RELEASES_URL = f"https://github.com/{GITHUB_REPOSITORY}/releases"
 _VERSION_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
