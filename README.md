@@ -17,6 +17,7 @@ Aplicación de escritorio para crear y controlar los cuadrantes semanales del re
 - Icono propio de CuadrantO separado del logo configurable de la empresa.
 - Exportación a PDF y copias automáticas de la base de datos en OneDrive.
 - Comprobación de actualizaciones desde GitHub con instalación confirmada y copia de seguridad previa.
+- Cuadrícula optimizada para equipos modestos, con controles ligeros, fuentes reutilizadas y carga inicial sin repintados parciales.
 
 ## Inicio
 

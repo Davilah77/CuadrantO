@@ -34,6 +34,8 @@ ctk.set_widget_scaling(float(initial.get("font_scale", 1.0)))
 class CuadranteApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        # Build the dense schedule off-screen so startup never paints row by row.
+        self.withdraw()
         initialize_database()
         self.minsize(1120, 720)
         remember_window(self, "main", "1380x880")
@@ -50,10 +52,15 @@ class CuadranteApp(ctk.CTk):
         tab = self.tabs.add("Cuadrante semanal")
         build_cuadrante(tab, self)
         self.schedule = tab._controller
+        self.after_idle(self._show_ready)
         if self.backup_error:
             self.after(250, lambda: messagebox.showwarning("Copia de seguridad", self.backup_error, parent=self))
         if load_settings().get("check_updates_on_start", True):
             self.after(1200, lambda: self.check_updates(silent=True))
+
+    def _show_ready(self):
+        self.deiconify()
+        self.lift()
 
     def _build_header(self):
         header = ctk.CTkFrame(self, corner_radius=10)
@@ -89,6 +96,8 @@ class CuadranteApp(ctk.CTk):
     def _toggle_theme(self):
         mode = "Dark" if self.theme_switch.get() else "Light"
         ctk.set_appearance_mode(mode)
+        if hasattr(self, "schedule"):
+            self.schedule.apply_appearance()
         values = load_settings()
         values["appearance_mode"] = mode
         save_settings(values)
@@ -106,7 +115,9 @@ class CuadranteApp(ctk.CTk):
                 icon_image = Image.open(product_icon).convert("RGBA")
                 if icon_image.getbbox():
                     icon_image = icon_image.crop(icon_image.getbbox())
-                self._window_icon = ImageTk.PhotoImage(icon_image)
+                window_icon = icon_image.copy()
+                window_icon.thumbnail((256, 256), Image.Resampling.LANCZOS)
+                self._window_icon = ImageTk.PhotoImage(window_icon)
                 self.iconphoto(True, self._window_icon)
                 header_icon = icon_image.copy()
                 header_icon.thumbnail((64, 64), Image.Resampling.LANCZOS)
