@@ -12,7 +12,7 @@ from core.paths import APP_DIR, resource_path
 from core.settings import app_logo_path, backup_directory, configured_path, detected_onedrive, load_settings, save_settings
 from core.updater import RELEASES_URL, UpdateError, check_for_update, download_and_stage, launch_installer
 from core.version import __version__
-from core.window_state import remember_window
+from core.window_state import apply_native_titlebar, remember_window
 from modules.catalogos import employee_manager, shift_manager
 from modules.cuadrante import build_cuadrante
 
@@ -254,6 +254,8 @@ class CuadranteApp(ctk.CTk):
         )
         ctk.CTkLabel(window, text=description, wraplength=540, justify="left").pack(fill="x", padx=35)
         ctk.CTkButton(window, text="Repositorio y código fuente", command=lambda: webbrowser.open("https://github.com/Davilah77/CuadrantO")).pack(pady=22)
+        window.after_idle(lambda: apply_native_titlebar(window))
+        return window
 
     def open_employee_manager(self):
         employee_manager(self, self.schedule.refresh_catalogues)

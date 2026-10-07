@@ -25,6 +25,7 @@ def apply_native_titlebar(window) -> None:
                 hwnd, attribute, ctypes.byref(dark), ctypes.sizeof(dark)
             ) == 0:
                 break
+        user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
     except Exception:
         pass
 
@@ -120,3 +121,6 @@ def remember_window(window, key: str, default_geometry: str) -> None:
 
     window.bind("<Configure>", changed, add="+")
     window.bind("<Destroy>", destroyed, add="+")
+    window.bind(
+        "<Map>", lambda event: apply_native_titlebar(window) if event.widget is window else None, add="+"
+    )
