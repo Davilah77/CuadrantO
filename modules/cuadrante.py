@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from core.database import connect, transaction
 from core.settings import load_settings
-from core.window_state import remember_window
+from core.window_state import apply_native_titlebar, remember_window
 
 
 DAYS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
@@ -650,6 +650,8 @@ class ScheduleModule:
 
         ctk.CTkButton(actions, text="Quitar aviso", fg_color="#8B3A3A", command=clear_reminder).pack(side="left")
         ctk.CTkButton(actions, text="Guardar aviso", command=save_reminder).pack(side="right")
+        dialog.after_idle(lambda: apply_native_titlebar(dialog))
+        return dialog
 
     def _dates(self):
         monday = parse_week(self.week_var.get())
