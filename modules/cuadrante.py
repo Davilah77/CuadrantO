@@ -488,6 +488,8 @@ class ScheduleModule:
         frame = ctk.CTkFrame(window)
         frame.pack(fill="both", expand=True, padx=20, pady=(0, 12))
         style = ttk.Style(window)
+        if "clam" in style.theme_names():
+            style.theme_use("clam")
         style_name = "SavedWeeks.Treeview"
         dark = ctk.get_appearance_mode().lower() == "dark"
         style.configure(
@@ -495,17 +497,17 @@ class ScheduleModule:
             fieldbackground="#343638" if dark else "#F5F5F5", foreground="#F3F3F3" if dark else "#111111",
             rowheight=32, borderwidth=0,
         )
-        style.configure(f"{style_name}.Heading", background="#4E555A" if dark else "#D9D9D9", foreground="#F3F3F3" if dark else "#111111")
+        style.configure(
+            f"{style_name}.Heading", background="#60666A" if dark else "#D0D0D0",
+            foreground="#FFFFFF" if dark else "#111111", relief="flat", borderwidth=1,
+        )
+        style.map(f"{style_name}.Heading", background=[("active", "#3B8ED0")], foreground=[("active", "white")])
         style.map(style_name, background=[("selected", "#1F6AA5")], foreground=[("selected", "white")])
         tree = ttk.Treeview(
-            frame, columns=("inicio", "separador", "fin"), show="headings", selectmode="browse", style=style_name,
+            frame, columns=("inicio", "fin"), show="headings", selectmode="browse", style=style_name,
         )
-        tree.heading("inicio", text="Semana del")
-        tree.heading("separador", text="al")
-        tree.heading("fin", text="Hasta")
-        tree.column("inicio", width=190, anchor="center")
-        tree.column("separador", width=45, anchor="center", stretch=False)
-        tree.column("fin", width=190, anchor="center")
+        tree.column("inicio", width=220, anchor="center")
+        tree.column("fin", width=220, anchor="center")
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=scrollbar.set)
         tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
@@ -515,10 +517,26 @@ class ScheduleModule:
             stored_dates = [row[0] for row in conn.execute(
                 "SELECT fecha FROM clientes UNION SELECT fecha FROM asignaciones ORDER BY fecha DESC"
             )]
-        mondays = sorted({parse_week(value).isoformat() for value in stored_dates}, reverse=True)
-        for value in mondays:
-            monday = date.fromisoformat(value)
-            tree.insert("", "end", iid=value, values=(f"{monday:%d/%m/%Y}", "al", f"{monday + timedelta(days=6):%d/%m/%Y}"))
+        mondays = sorted({parse_week(value) for value in stored_dates}, reverse=True)
+        sort_state = {"column": "inicio", "descending": True}
+
+        def sort_weeks(column):
+            if sort_state["column"] == column:
+                sort_state["descending"] = not sort_state["descending"]
+            else:
+                sort_state.update(column=column, descending=False)
+            for item in tree.get_children():
+                tree.delete(item)
+            ordered = sorted(mondays, reverse=sort_state["descending"])
+            arrow = " ↓" if sort_state["descending"] else " ↑"
+            tree.heading("inicio", text="Semana del" + (arrow if column == "inicio" else ""), command=lambda: sort_weeks("inicio"))
+            tree.heading("fin", text="Hasta" + (arrow if column == "fin" else ""), command=lambda: sort_weeks("fin"))
+            for monday in ordered:
+                tree.insert("", "end", iid=monday.isoformat(), values=(f"{monday:%d/%m/%Y}", f"{monday + timedelta(days=6):%d/%m/%Y}"))
+
+        # Primera carga: semanas más recientes arriba.
+        sort_state["descending"] = False
+        sort_weeks("inicio")
 
         if not mondays:
             ctk.CTkLabel(frame, text="Todavía no hay semanas guardadas.", text_color="gray").place(relx=0.5, rely=0.5, anchor="center")

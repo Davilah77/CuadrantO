@@ -8,6 +8,27 @@ from core.settings import load_settings, save_settings
 GEOMETRY_RE = re.compile(r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$")
 
 
+def apply_native_titlebar(window) -> None:
+    """Match the Windows title bar to the application's saved theme."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        window.update_idletasks()
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetParent(window.winfo_id()) or window.winfo_id()
+        dark = ctypes.c_int(str(load_settings().get("appearance_mode", "Dark")).lower() == "dark")
+        # Windows 10 used attribute 19 before standardising it as 20.
+        for attribute in (20, 19):
+            if ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                hwnd, attribute, ctypes.byref(dark), ctypes.sizeof(dark)
+            ) == 0:
+                break
+    except Exception:
+        pass
+
+
 def _screen_bounds(window) -> tuple[int, int, int, int]:
     if sys.platform == "win32":
         try:
@@ -42,6 +63,8 @@ def remember_window(window, key: str, default_geometry: str) -> None:
     geometry = _visible_geometry(window, saved.get("geometry", "")) or default_geometry
     window.geometry(geometry)
     window.update_idletasks()
+    apply_native_titlebar(window)
+    window.after(20, lambda: apply_native_titlebar(window))
     if saved.get("maximized"):
         try:
             window.state("zoomed")
