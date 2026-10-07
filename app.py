@@ -82,7 +82,9 @@ class CuadranteApp(ctk.CTk):
         titles.pack(side="left", padx=10, pady=4)
         self.title_label = ctk.CTkLabel(titles, text="", font=ctk.CTkFont(size=18, weight="bold"), height=22)
         self.title_label.pack(anchor="w")
-        self.subtitle_label = ctk.CTkLabel(titles, text="", text_color="gray", font=ctk.CTkFont(size=11), height=16)
+        self.subtitle_label = ctk.CTkLabel(
+            titles, text="", text_color="gray", font=ctk.CTkFont(size=11, weight="bold"), height=16,
+        )
         self.subtitle_label.pack(anchor="w")
         self.theme_switch = ctk.CTkSwitch(header, text="Modo oscuro", command=self._toggle_theme)
         if str(load_settings().get("appearance_mode", "Dark")).lower() == "dark":
