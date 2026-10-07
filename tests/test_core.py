@@ -64,7 +64,7 @@ class CuadranteTests(unittest.TestCase):
             shift = conn.execute("SELECT * FROM turnos WHERE codigo='dac'").fetchone()
         self.assertEqual(
             (shift["entrada_manana"], shift["salida_manana"], shift["entrada_tarde"], shift["salida_tarde"]),
-            ("08:00", "16:00", "18:30", "22:30"),
+            ("08:00", "16:00", "19:00", "23:00"),
         )
         self.assertEqual((shift["horas"], shift["desayuno"], shift["almuerzo"], shift["cena"]), (12, 1, 1, 1))
 

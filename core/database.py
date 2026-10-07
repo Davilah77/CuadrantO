@@ -24,7 +24,7 @@ DEFAULT_SHIFTS = [
     ("da1", "08:00", "16:00", "", "", 8, 1, 1, 0, 0),
     ("da2", "08:30", "16:30", "", "", 8, 1, 1, 0, 0),
     ("da3", "09:00", "17:00", "", "", 8, 1, 1, 0, 0),
-    ("dac", "08:00", "16:00", "18:30", "22:30", 12, 1, 1, 1, 0),
+    ("dac", "08:00", "16:00", "19:00", "23:00", 12, 1, 1, 1, 0),
     ("dc1", "06:45", "10:45", "18:15", "22:15", 8, 1, 0, 1, 1),
     ("dc2", "06:45", "10:45", "18:45", "22:45", 8, 1, 0, 1, 1),
     ("dc3", "07:00", "11:00", "18:15", "22:15", 8, 1, 0, 1, 1),
@@ -138,3 +138,21 @@ def initialize_database() -> None:
             )
             conn.execute("UPDATE turnos SET apertura=0 WHERE codigo IN ('dc5','dc6')")
             conn.execute("INSERT INTO app_meta(clave,valor) VALUES (?,?)", (migration, "aplicada"))
+
+        dac_migration = "catalogo_dac_1900_2300_2026_10"
+        if conn.execute("SELECT 1 FROM app_meta WHERE clave=?", (dac_migration,)).fetchone() is None:
+            dac = next(row for row in DEFAULT_SHIFTS if row[0] == "dac")
+            order = conn.execute("SELECT COALESCE(MAX(orden),0)+1 FROM turnos").fetchone()[0]
+            conn.execute(
+                """INSERT OR IGNORE INTO turnos(
+                    codigo,entrada_manana,salida_manana,entrada_tarde,salida_tarde,horas,
+                    desayuno,almuerzo,cena,apertura,guardia,orden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (*dac[:10], dac[10] if len(dac) > 10 else 0, order),
+            )
+            conn.execute(
+                """UPDATE turnos SET entrada_tarde='19:00',salida_tarde='23:00'
+                   WHERE codigo='dac' AND entrada_manana='08:00' AND salida_manana='16:00'
+                   AND entrada_tarde='18:30' AND salida_tarde='22:30' AND horas=12
+                   AND desayuno=1 AND almuerzo=1 AND cena=1"""
+            )
+            conn.execute("INSERT INTO app_meta(clave,valor) VALUES (?,?)", (dac_migration, "aplicada"))
