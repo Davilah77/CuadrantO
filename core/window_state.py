@@ -1,5 +1,6 @@
 import re
 import sys
+import time
 
 from core.settings import load_settings, save_settings
 
@@ -50,6 +51,7 @@ def remember_window(window, key: str, default_geometry: str) -> None:
     pending = None
     last_normal = geometry
     last_maximized = bool(saved.get("maximized"))
+    last_change = 0.0
 
     def write_state():
         try:
@@ -63,11 +65,15 @@ def remember_window(window, key: str, default_geometry: str) -> None:
 
     def persist():
         nonlocal pending
+        remaining = 0.45 - (time.monotonic() - last_change)
+        if remaining > 0:
+            pending = window.after(max(50, int(remaining * 1000)), persist)
+            return
         pending = None
         write_state()
 
     def changed(event):
-        nonlocal pending, last_normal, last_maximized
+        nonlocal pending, last_normal, last_maximized, last_change
         if event.widget is not window:
             return
         try:
@@ -79,9 +85,11 @@ def remember_window(window, key: str, default_geometry: str) -> None:
                     last_normal = current
         except Exception:
             return
-        if pending is not None:
-            window.after_cancel(pending)
-        pending = window.after(450, persist)
+        last_change = time.monotonic()
+        # Keep a single lightweight timer while Windows emits dozens of
+        # Configure events during a drag or maximize operation.
+        if pending is None:
+            pending = window.after(450, persist)
 
     def destroyed(event):
         if event.widget is window:

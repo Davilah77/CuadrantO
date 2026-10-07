@@ -1,6 +1,7 @@
 import unittest
 import hashlib
 import io
+import os
 import shutil
 import zipfile
 from contextlib import closing
@@ -9,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core import database
+from core import settings
 from core import updater
 from core.updater import UpdateInfo, is_newer, version_key
 from core.window_state import _visible_geometry
@@ -125,6 +127,17 @@ class CuadranteTests(unittest.TestCase):
         with patch("core.window_state._screen_bounds", return_value=(0, 0, 1920, 1080)):
             self.assertEqual(_visible_geometry(object(), "780x760+3000+2000"), "780x760+1840+1000")
             self.assertEqual(_visible_geometry(object(), "780x760-3000-2000"), "780x760-700+0")
+
+    def test_onedrive_detection_uses_available_environment_roots(self):
+        folder = Path(__file__).parent / "_onedrive_test"
+        folder.mkdir(exist_ok=True)
+        try:
+            with patch.dict(os.environ, {"OneDriveCommercial": str(folder)}, clear=True), \
+                    patch.object(settings.sys, "platform", "linux"), \
+                    patch.object(settings.Path, "home", return_value=Path(__file__).parent / "missing-home"):
+                self.assertEqual(settings.detected_onedrive(), folder.resolve())
+        finally:
+            folder.rmdir()
 
     def test_update_package_is_verified_and_staged(self):
         archive = io.BytesIO()

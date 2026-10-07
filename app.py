@@ -3,6 +3,7 @@ from PIL import Image, ImageTk
 import sys
 import threading
 import webbrowser
+import tkinter as tk
 from tkinter import filedialog, messagebox
 
 from core.backup import backup_on_start_if_enabled
@@ -47,9 +48,18 @@ class CuadranteApp(ctk.CTk):
             self.backup_error = str(exc)
         self._build_header()
         self._build_update_banner()
-        self.tabs = ctk.CTkTabview(self, corner_radius=10)
-        self.tabs.pack(fill="both", expand=True, padx=15, pady=10)
-        tab = self.tabs.add("Cuadrante semanal")
+        # There is only one workspace. A full CTkTabview was needlessly
+        # redrawing several canvases on every resize, so we keep its visual
+        # tab label with a much lighter container.
+        self.content = tk.Frame(self, bg=self._surface_color(), bd=0, highlightthickness=0)
+        self.content.pack(fill="both", expand=True, padx=15, pady=10)
+        ctk.CTkLabel(
+            self.content, text="Cuadrante semanal", fg_color=("#3B8ED0", "#1F6AA5"),
+            text_color="white", corner_radius=8, height=28,
+        ).pack(pady=(0, 3))
+        tab = tk.Frame(self.content, bg=self._surface_color(), bd=0, highlightthickness=0)
+        tab.pack(fill="both", expand=True)
+        self.tab_body = tab
         build_cuadrante(tab, self)
         self.schedule = tab._controller
         self.after_idle(self._show_ready)
@@ -96,11 +106,17 @@ class CuadranteApp(ctk.CTk):
     def _toggle_theme(self):
         mode = "Dark" if self.theme_switch.get() else "Light"
         ctk.set_appearance_mode(mode)
+        self.content.configure(bg=self._surface_color())
+        self.tab_body.configure(bg=self._surface_color())
         if hasattr(self, "schedule"):
             self.schedule.apply_appearance()
         values = load_settings()
         values["appearance_mode"] = mode
         save_settings(values)
+
+    @staticmethod
+    def _surface_color():
+        return "#2B2B2B" if ctk.get_appearance_mode().lower() == "dark" else "#DBDBDB"
 
     def _refresh_branding(self):
         settings = load_settings()
@@ -173,7 +189,7 @@ class CuadranteApp(ctk.CTk):
         self.available_update = result
         self.update_banner_label.configure(text=f"Nueva versión disponible: CuadrantO {result.version}")
         if not self.update_banner.winfo_manager():
-            self.update_banner.pack(fill="x", padx=15, pady=(5, 0), before=self.tabs)
+            self.update_banner.pack(fill="x", padx=15, pady=(5, 0), before=self.content)
 
     def show_release_notes(self):
         if not self.available_update:
@@ -337,6 +353,7 @@ class CuadranteApp(ctk.CTk):
                     backup_directory().mkdir(parents=True, exist_ok=True)
                 ctk.set_widget_scaling(scale)
                 self._refresh_branding()
+                self.schedule.apply_display_settings()
                 self.schedule.recalculate()
                 window.destroy()
                 messagebox.showinfo("Ajustes", "Los ajustes se han guardado. Si cambiaste la base de datos, reinicia la aplicación.", parent=self)

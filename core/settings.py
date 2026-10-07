@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from pathlib import Path
 
 from core.paths import APP_DIR, SETTINGS_PATH
@@ -52,10 +53,74 @@ def configured_path(key: str) -> Path:
 
 
 def detected_onedrive() -> Path | None:
+    candidates = []
     for variable in ("OneDriveCommercial", "OneDrive", "OneDriveConsumer"):
         value = os.environ.get(variable)
-        if value and Path(value).exists():
-            return Path(value)
+        if value:
+            candidates.append(Path(value))
+
+    # The environment variables are not always inherited by packaged apps.
+    # OneDrive keeps the authoritative sync roots in the current user's registry.
+    if sys.platform == "win32":
+        try:
+            import winreg
+
+            accounts = r"Software\Microsoft\OneDrive\Accounts"
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, accounts) as root:
+                index = 0
+                while True:
+                    try:
+                        account = winreg.EnumKey(root, index)
+                    except OSError:
+                        break
+                    index += 1
+                    try:
+                        with winreg.OpenKey(root, account) as key:
+                            candidates.append(Path(winreg.QueryValueEx(key, "UserFolder")[0]))
+                    except OSError:
+                        continue
+
+            # Older OneDrive clients and some managed installations publish
+            # their root in one of these per-user registry locations instead.
+            registry_values = (
+                (r"Software\Microsoft\OneDrive", ("UserFolder",)),
+                (r"Environment", ("OneDriveCommercial", "OneDrive", "OneDriveConsumer")),
+                (
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders",
+                    ("OneDrive", "{A52BBA46-E9E1-435f-B3D9-28DAA648C0F6}"),
+                ),
+            )
+            for key_path, value_names in registry_values:
+                try:
+                    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+                        for value_name in value_names:
+                            try:
+                                value = winreg.QueryValueEx(key, value_name)[0]
+                                candidates.append(Path(os.path.expandvars(str(value))))
+                            except OSError:
+                                continue
+                except OSError:
+                    continue
+        except (ImportError, OSError):
+            pass
+
+    home = Path.home()
+    candidates.extend((home / "OneDrive", home / "OneDrive - Personal"))
+    try:
+        candidates.extend(path for path in home.glob("OneDrive - *") if path.is_dir())
+    except OSError:
+        pass
+
+    seen = set()
+    for candidate in candidates:
+        try:
+            normalized = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        key = str(normalized).casefold()
+        if key not in seen and normalized.is_dir():
+            return normalized
+        seen.add(key)
     return None
 
 

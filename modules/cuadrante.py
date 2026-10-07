@@ -4,6 +4,7 @@ from tkinter import font as tkfont
 from tkinter import messagebox
 
 import customtkinter as ctk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from core.database import connect, transaction
 from core.settings import load_settings
@@ -13,29 +14,21 @@ from core.window_state import remember_window
 DAYS = ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo")
 SPECIAL_VALUES = ("", "DESCANSO", "PROPIO", "BAJA", "FALTA")
 VALUE_COLORS = {
-    "DESCANSO": ("#2E8B57", "#257346"),
-    "PROPIO": ("#7D3C98", "#6C3483"),
-    "BAJA": ("#C0392B", "#A93226"),
-    "FALTA": ("#E67E22", "#CA6F1E"),
+    "DESCANSO": ("#2E8B57", "#257346"), "PROPIO": ("#7D3C98", "#6C3483"),
+    "BAJA": ("#C0392B", "#A93226"), "FALTA": ("#E67E22", "#CA6F1E"),
 }
 REMINDER_COLORS = {
-    "Amarillo": ("#E0A800", "#9A7300"),
-    "Naranja": ("#E67E22", "#CA6F1E"),
-    "Morado": ("#8E44AD", "#71368A"),
-    "Rosa": ("#D65A8B", "#A83E68"),
-    "Azul": ("#2471A3", "#1B4F72"),
-    "Verde": ("#2E8B57", "#257346"),
-    "Turquesa": ("#159E9C", "#117A78"),
-    "Rojo": ("#C0392B", "#A93226"),
+    "Amarillo": ("#E0A800", "#9A7300"), "Naranja": ("#E67E22", "#CA6F1E"),
+    "Morado": ("#8E44AD", "#71368A"), "Rosa": ("#D65A8B", "#A83E68"),
+    "Azul": ("#2471A3", "#1B4F72"), "Verde": ("#2E8B57", "#257346"),
+    "Turquesa": ("#159E9C", "#117A78"), "Rojo": ("#C0392B", "#A93226"),
     "Gris": ("#707B7C", "#566263"),
 }
 COVERAGE_COLORS = {
-    "red": ("#FFB3AD", "#8B2D25"),
-    "yellow": ("#FFE58A", "#806C13"),
-    "green": ("#A9DF9C", "#276738"),
-    "purple": ("#D7B5E8", "#66347A"),
+    "red": ("#FFB3AD", "#8B2D25"), "yellow": ("#FFE58A", "#806C13"),
+    "green": ("#A9DF9C", "#276738"), "purple": ("#D7B5E8", "#66347A"),
 }
-TABLE_SURFACE = ("gray86", "gray17")
+TABLE_SURFACE = ("#DBDBDB", "#2B2B2B")
 
 
 def parse_week(value: str) -> date:
@@ -53,39 +46,83 @@ def build_cuadrante(parent, app):
     parent._controller = ScheduleModule(parent, app)
 
 
+class DisplayValue:
+    """Label-compatible value object: reports can read it without a real widget."""
+
+    def __init__(self, text="", **values):
+        self.values = {"text": text, **values}
+
+    def configure(self, **values):
+        self.values.update(values)
+
+    def cget(self, key):
+        return self.values.get(key)
+
+
 class ScheduleModule:
+    NAME_WIDTH = 235
+    DAY_WIDTH = 122
+    TABLE_WIDTH = NAME_WIDTH + DAY_WIDTH * 7
+
     def __init__(self, parent, app):
         self.parent = parent
         self.app = app
         self.assignment_vars = {}
-        self.assignment_widgets = {}
-        self.assignment_cells = {}
-        self.reminder_buttons = {}
         self.reminders = {}
         self.client_vars = {}
         self.coverage_labels = {}
         self.opening_labels = {}
         self.guard_labels = {}
         self.ett_hour_vars = {}
-        self.ett_hour_widgets = {}
         self.ett_targets = {}
+        self.ett_hour_colors = {}
+        self.rows = []
         self.assignment_menu = None
+        self.ett_menu = None
         self._active_assignment_key = None
+        self._active_ett_employee = None
+        self._editor = None
+        self._editor_item = None
+        self._editor_previous = None
+        self._table_image = None
+        self._draw = None
+        self._drawing_suspended = False
         self._create_shared_fonts()
         self._build()
         self.load_week()
 
     def _create_shared_fonts(self):
-        """Create fonts once instead of allocating one font per table cell."""
         scale = float(load_settings().get("font_scale", 1.0))
         size = lambda value: max(8, round(value * scale))
-        self.ctk_font_bold = ctk.CTkFont(weight="bold")
-        self.ctk_font_small_bold = ctk.CTkFont(size=10, weight="bold")
-        self.ctk_font_menu = ctk.CTkFont(size=11)
-        self.assignment_font = tkfont.Font(family="Segoe UI", size=size(11))
-        self.assignment_shift_font = tkfont.Font(family="Segoe UI", size=size(12), weight="bold")
-        self.assignment_special_font = tkfont.Font(family="Segoe UI", size=size(9), weight="bold")
-        self.reminder_font = tkfont.Font(family="Segoe UI", size=size(10), weight="bold")
+        self.font_normal = tkfont.Font(family="Segoe UI", size=size(10))
+        self.font_bold = tkfont.Font(family="Segoe UI", size=size(10), weight="bold")
+        self.font_heading = tkfont.Font(family="Segoe UI", size=size(11), weight="bold")
+        self.font_shift = tkfont.Font(family="Segoe UI", size=size(12), weight="bold")
+        self.font_special = tkfont.Font(family="Segoe UI", size=size(9), weight="bold")
+        self.font_small = tkfont.Font(family="Segoe UI", size=size(9))
+        regular_candidates = (
+            r"C:\Windows\Fonts\segoeui.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        )
+        bold_candidates = (
+            r"C:\Windows\Fonts\segoeuib.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        )
+
+        def image_font(candidates, font_size):
+            for path in candidates:
+                try:
+                    return ImageFont.truetype(path, size(font_size))
+                except OSError:
+                    continue
+            return ImageFont.load_default()
+
+        self.image_font_normal = image_font(regular_candidates, 10)
+        self.image_font_bold = image_font(bold_candidates, 10)
+        self.image_font_heading = image_font(bold_candidates, 11)
+        self.image_font_shift = image_font(bold_candidates, 12)
+        self.image_font_special = image_font(bold_candidates, 9)
+        self.image_font_small = image_font(regular_candidates, 9)
 
     @staticmethod
     def _theme_color(value):
@@ -94,214 +131,297 @@ class ScheduleModule:
         return value
 
     def _build(self):
-        toolbar = ctk.CTkFrame(self.parent)
-        toolbar.pack(fill="x", padx=10, pady=(10, 5))
-        ctk.CTkLabel(toolbar, text="Cuadrante semanal", font=ctk.CTkFont(size=19, weight="bold")).pack(side="left", padx=15, pady=12)
+        self.toolbar = tk.Frame(self.parent, bg=self._theme_color(TABLE_SURFACE), bd=0, highlightthickness=0)
+        self.toolbar.pack(fill="x", padx=10, pady=(10, 5))
+        ctk.CTkLabel(self.toolbar, text="Cuadrante semanal", font=ctk.CTkFont(size=19, weight="bold")).pack(side="left", padx=15, pady=12)
         self.week_var = ctk.StringVar(value=date.today().strftime("%d/%m/%Y"))
-        ctk.CTkEntry(toolbar, textvariable=self.week_var, width=130).pack(side="left", padx=5)
-        ctk.CTkButton(toolbar, text="Cargar semana", width=115, command=self.load_week).pack(side="left", padx=4)
-        ctk.CTkButton(toolbar, text="Turnos", width=82, command=self.app.open_shift_manager).pack(side="right", padx=(4, 14))
-        ctk.CTkButton(toolbar, text="Empleados", width=92, command=self.app.open_employee_manager).pack(side="right", padx=4)
-        ctk.CTkButton(toolbar, text="Exportar PDF", width=105, command=self.export_pdf).pack(side="right", padx=4)
-        ctk.CTkButton(toolbar, text="Guardar", width=95, command=self.save).pack(side="right", padx=4)
-
+        ctk.CTkEntry(self.toolbar, textvariable=self.week_var, width=130).pack(side="left", padx=5)
+        ctk.CTkButton(self.toolbar, text="Cargar semana", width=115, command=self.load_week).pack(side="left", padx=4)
+        ctk.CTkButton(self.toolbar, text="Turnos", width=82, command=self.app.open_shift_manager).pack(side="right", padx=(4, 14))
+        ctk.CTkButton(self.toolbar, text="Empleados", width=92, command=self.app.open_employee_manager).pack(side="right", padx=4)
+        ctk.CTkButton(self.toolbar, text="Exportar PDF", width=105, command=self.export_pdf).pack(side="right", padx=4)
+        ctk.CTkButton(self.toolbar, text="Guardar", width=95, command=self.save).pack(side="right", padx=4)
         self.week_title = ctk.CTkLabel(self.parent, text="", font=ctk.CTkFont(size=15, weight="bold"))
         self.week_title.pack(pady=(2, 5))
-        self.scroll = ctk.CTkScrollableFrame(self.parent, fg_color=TABLE_SURFACE)
-        self.scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
-        self.grid = ctk.CTkFrame(self.scroll, fg_color=TABLE_SURFACE)
-        self.grid.pack(fill="x")
+
+        self.canvas_frame = tk.Frame(self.parent, bg=self._theme_color(TABLE_SURFACE), bd=0, highlightthickness=0)
+        self.canvas_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.canvas = tk.Canvas(self.canvas_frame, bd=0, highlightthickness=0, bg=self._theme_color(TABLE_SURFACE), takefocus=True)
+        self.vscroll = tk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.hscroll = tk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=self.vscroll.set, xscrollcommand=self.hscroll.set)
+        self.vscroll.pack(side="right", fill="y", padx=(0, 3), pady=3)
+        self.hscroll.pack(side="bottom", fill="x", padx=3, pady=(0, 3))
+        self.canvas.pack(side="left", fill="both", expand=True, padx=(3, 0), pady=(3, 0))
+        self.canvas.bind("<Button-1>", self._on_canvas_click)
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.canvas.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
+        self.canvas.bind("<Button-4>", lambda _event: self.canvas.yview_scroll(-3, "units"))
+        self.canvas.bind("<Button-5>", lambda _event: self.canvas.yview_scroll(3, "units"))
         self._render_grid()
 
     def _load_catalogues(self):
         with connect() as conn:
-            self.employees = conn.execute(
-                "SELECT id,categoria,nombre FROM empleados WHERE activo=1 ORDER BY orden,nombre"
-            ).fetchall()
-            shift_rows = conn.execute(
-                "SELECT * FROM turnos WHERE activo=1 ORDER BY orden,codigo"
-            ).fetchall()
+            self.employees = conn.execute("SELECT id,categoria,nombre FROM empleados WHERE activo=1 ORDER BY orden,nombre").fetchall()
+            shift_rows = conn.execute("SELECT * FROM turnos WHERE activo=1 ORDER BY orden,codigo").fetchall()
         self.shifts = {row["codigo"]: dict(row) for row in shift_rows}
         self.options = list(SPECIAL_VALUES) + list(self.shifts)
 
+    def _add_row(self, kind, height, **values):
+        y0 = self.rows[-1]["y1"] if self.rows else 0
+        self.rows.append({"kind": kind, "y0": y0, "y1": y0 + height, **values})
+
     def _render_grid(self):
-        for child in self.grid.winfo_children():
-            child.destroy()
+        self._drawing_suspended = True
+        self._close_editor(commit=True)
         self.assignment_vars.clear()
-        self.assignment_widgets.clear()
-        self.assignment_cells.clear()
-        self.reminder_buttons.clear()
         self.client_vars.clear()
         self.coverage_labels.clear()
         self.opening_labels.clear()
         self.guard_labels.clear()
         self.ett_hour_vars.clear()
-        self.ett_hour_widgets.clear()
+        self.ett_hour_colors.clear()
+        self.rows.clear()
         self._load_catalogues()
         self._build_assignment_menu()
-        self.grid.grid_columnconfigure(0, weight=1)
-        for column in range(1, 8):
-            self.grid.grid_columnconfigure(column, minsize=122, weight=0)
-        ctk.CTkLabel(self.grid, text="Empleado", width=235, anchor="w", font=self.ctk_font_bold).grid(row=0, column=0, padx=2, pady=4, sticky="ew")
-        for day_index, day in enumerate(DAYS):
-            ctk.CTkLabel(self.grid, text=day, width=120, font=self.ctk_font_bold).grid(row=0, column=day_index + 1, padx=2, pady=4)
-        row_index = 1
+        self._build_ett_menu()
+
+        self._add_row("header", 38)
         current_category = None
         for employee in self.employees:
             if employee["categoria"] != current_category:
                 current_category = employee["categoria"]
-                ctk.CTkLabel(
-                    self.grid, text=current_category, anchor="w", font=self.ctk_font_bold,
-                    fg_color=("#F4E84A", "#756D10"), text_color=("#111111", "white"), corner_radius=4,
-                ).grid(row=row_index, column=0, columnspan=8, padx=2, pady=(7, 2), sticky="ew")
-                row_index += 1
+                self._add_row("section", 34, title=current_category)
+            employee_id = employee["id"]
+            self._add_row("employee", 36, employee=employee)
             if employee["categoria"] == "ETT":
-                employee_cell = ctk.CTkFrame(self.grid, width=235, height=28, fg_color=TABLE_SURFACE)
-                employee_cell.grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
-                employee_cell.grid_propagate(False)
-                ctk.CTkLabel(employee_cell, text=employee["nombre"], anchor="w", font=self.ctk_font_bold).pack(side="left", fill="x", expand=True)
-                employee_id = employee["id"]
                 self.ett_targets.setdefault(employee_id, 40)
-                hour_var = ctk.StringVar(value="0/40 h")
-                hour_menu = ctk.CTkOptionMenu(
-                    employee_cell, values=[f"{hours} h" for hours in range(0, 61)], variable=hour_var,
-                    width=72, height=25, font=self.ctk_font_small_bold,
-                    dropdown_font=self.ctk_font_menu,
-                    command=lambda value, emp=employee_id: self._ett_target_changed(emp, value),
-                )
-                hour_menu.pack(side="right", padx=(4, 0))
-                self.ett_hour_vars[employee_id] = hour_var
-                self.ett_hour_widgets[employee_id] = hour_menu
-            else:
-                ctk.CTkLabel(self.grid, text=employee["nombre"], width=235, anchor="w", font=self.ctk_font_bold).grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+                self.ett_hour_vars[employee_id] = ctk.StringVar(value="0/40 h")
             for day_index in range(7):
-                variable = ctk.StringVar(value="")
-                key = (employee["id"], day_index)
-                cell = tk.Frame(
-                    self.grid, width=120, height=28, bd=0,
-                    bg=self._theme_color(TABLE_SURFACE), highlightthickness=0,
-                )
-                cell.grid(row=row_index, column=day_index + 1, padx=2, pady=2)
-                cell.grid_propagate(False)
-                widget = tk.Button(
-                    cell, text="▾", anchor="w", padx=7, pady=0, bd=0,
-                    relief="flat", cursor="hand2", font=self.assignment_font,
-                    highlightthickness=0, takefocus=True,
-                    command=lambda current=key: self._show_assignment_menu(current),
-                )
-                widget.place(x=0, y=0, width=92, height=28)
-                reminder = tk.Button(
-                    cell, text="●", padx=0, pady=0, bd=0, relief="flat",
-                    cursor="hand2", font=self.reminder_font, highlightthickness=0,
-                    command=lambda emp=employee["id"], day=day_index: self.open_reminder(emp, day),
-                )
-                reminder.place(x=95, y=0, width=25, height=28)
-                self.assignment_vars[key] = variable
-                self.assignment_widgets[key] = widget
-                self.assignment_cells[key] = cell
-                self.reminder_buttons[key] = reminder
-                self._paint_assignment(key, "")
-            row_index += 1
+                self.assignment_vars[(employee_id, day_index)] = ctk.StringVar(value="")
 
-        row_index += 1
-        ctk.CTkLabel(self.grid, text="Clientes en servicio", anchor="w", font=self.ctk_font_bold, fg_color=("#F4E84A", "#756D10"), text_color=("#111111", "white"), corner_radius=4).grid(row=row_index, column=0, columnspan=8, sticky="ew", pady=(4, 2))
-        row_index += 1
+        self._add_row("spacer", 14)
+        self._add_row("section", 34, title="Clientes en servicio")
         for service in ("desayuno", "almuerzo", "cena", "todo_incluido"):
-            ctk.CTkLabel(self.grid, text=service.replace("_", " ").title(), anchor="w", font=self.ctk_font_bold).grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+            self._add_row("client", 36, service=service)
             for day_index in range(7):
-                variable = ctk.StringVar(value="0")
-                ctk.CTkEntry(self.grid, textvariable=variable, width=120, justify="center", font=self.ctk_font_bold).grid(row=row_index, column=day_index + 1, padx=2, pady=2)
-                self.client_vars[(service, day_index)] = variable
-            row_index += 1
-
-        ctk.CTkLabel(self.grid, text="Trabajadores en servicio", anchor="w", font=self.ctk_font_bold, fg_color=("#F4E84A", "#756D10"), text_color=("#111111", "white"), corner_radius=4).grid(row=row_index, column=0, columnspan=8, sticky="ew", pady=(8, 2))
-        row_index += 1
+                self.client_vars[(service, day_index)] = ctk.StringVar(value="0")
+        self._add_row("section", 38, title="Trabajadores en servicio")
         for service in ("desayuno", "almuerzo", "cena"):
-            ctk.CTkLabel(self.grid, text=service.title(), anchor="w").grid(row=row_index, column=0, padx=3, pady=2, sticky="ew")
+            self._add_row("coverage", 36, service=service)
             for day_index in range(7):
-                label = ctk.CTkLabel(self.grid, text="0", width=120, corner_radius=5, font=self.ctk_font_bold)
-                label.grid(row=row_index, column=day_index + 1, padx=2, pady=2)
-                self.coverage_labels[(service, day_index)] = label
-            row_index += 1
+                self.coverage_labels[(service, day_index)] = DisplayValue("0", fg_color=COVERAGE_COLORS["red"])
+        self._add_row("opening", 40)
+        self._add_row("guard", 40)
+        for day_index in range(7):
+            self.opening_labels[day_index] = DisplayValue("—", fg_color=("#D9F09B", "#345019"), text_color=("#111111", "white"))
+            self.guard_labels[day_index] = DisplayValue("—", fg_color=("#D7EBF7", "#245B78"), text_color=("#111111", "white"))
+        self.reminder_summary = DisplayValue("Sin recordatorios especiales esta semana.")
+        self._add_row("reminders", 58)
+        self.canvas.configure(scrollregion=(0, 0, self.TABLE_WIDTH, self.rows[-1]["y1"] + 4))
+        self._drawing_suspended = False
+        self._redraw()
 
-        ctk.CTkLabel(self.grid, text="Apertura", anchor="w", font=self.ctk_font_bold, fg_color=("#B8E33D", "#466819"), corner_radius=4).grid(row=row_index, column=0, padx=3, pady=4, sticky="ew")
-        for day_index in range(7):
-            label = ctk.CTkLabel(self.grid, text="—", width=120, corner_radius=5, fg_color=("#D9F09B", "#345019"), wraplength=115)
-            label.grid(row=row_index, column=day_index + 1, padx=2, pady=4)
-            self.opening_labels[day_index] = label
-        row_index += 1
-        ctk.CTkLabel(self.grid, text="Guardia", anchor="w", font=self.ctk_font_bold, fg_color=("#B9D7EA", "#1F4E68"), corner_radius=4).grid(row=row_index, column=0, padx=3, pady=4, sticky="ew")
-        for day_index in range(7):
-            label = ctk.CTkLabel(self.grid, text="—", width=120, corner_radius=5, fg_color=("#D7EBF7", "#245B78"), wraplength=115)
-            label.grid(row=row_index, column=day_index + 1, padx=2, pady=4)
-            self.guard_labels[day_index] = label
-        row_index += 1
-        self.reminder_summary = ctk.CTkLabel(
-            self.grid, text="Sin recordatorios especiales esta semana.", anchor="w",
-            justify="left", wraplength=1050, fg_color=("#FFF3CD", "#55450D"),
-            corner_radius=5,
+    def _new_menu(self, font):
+        return tk.Menu(
+            self.canvas, tearoff=False, font=font,
+            bg=self._theme_color(("#F5F5F5", "#303030")), fg=self._theme_color(("#111111", "#F3F3F3")),
+            activebackground=self._theme_color(("#3B8ED0", "#159DB5")), activeforeground="white", bd=1, relief="solid",
         )
-        self.reminder_summary.grid(row=row_index, column=0, columnspan=8, sticky="ew", padx=3, pady=(8, 4), ipady=5)
-        self._apply_theme_surfaces(self.grid)
 
     def _build_assignment_menu(self):
         if self.assignment_menu is not None:
             self.assignment_menu.destroy()
-        self.assignment_menu = tk.Menu(
-            self.grid, tearoff=False, font=self.assignment_shift_font,
-            bg=self._theme_color(("#F5F5F5", "#303030")),
-            fg=self._theme_color(("#111111", "#F3F3F3")),
-            activebackground=self._theme_color(("#3B8ED0", "#159DB5")),
-            activeforeground="white", bd=1, relief="solid",
-        )
+        self.assignment_menu = self._new_menu(self.font_shift)
         for value in self.options:
-            label = value or "Sin turno"
-            self.assignment_menu.add_command(label=label, command=lambda selected=value: self._choose_assignment(selected))
+            self.assignment_menu.add_command(label=value or "Sin turno", command=lambda selected=value: self._choose_assignment(selected))
 
-    def _show_assignment_menu(self, key):
-        self._active_assignment_key = key
-        widget = self.assignment_widgets[key]
-        try:
-            self.assignment_menu.tk_popup(widget.winfo_rootx(), widget.winfo_rooty() + widget.winfo_height())
-        finally:
-            self.assignment_menu.grab_release()
+    def _build_ett_menu(self):
+        if self.ett_menu is not None:
+            self.ett_menu.destroy()
+        self.ett_menu = self._new_menu(self.font_normal)
+        for hours in range(61):
+            self.ett_menu.add_command(label=f"{hours} h", command=lambda selected=hours: self._choose_ett_hours(selected))
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
+
+    def _on_shift_mousewheel(self, event):
+        self.canvas.xview_scroll(-1 if event.delta > 0 else 1, "units")
+        return "break"
+
+    def _row_at(self, y):
+        return next((row for row in self.rows if row["y0"] <= y < row["y1"]), None)
+
+    def _on_canvas_click(self, event):
+        self._close_editor(commit=True)
+        x, y = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
+        row = self._row_at(y)
+        if not row:
+            return
+        day_index = int((x - self.NAME_WIDTH) // self.DAY_WIDTH) if x >= self.NAME_WIDTH else -1
+        if row["kind"] == "employee":
+            employee = row["employee"]
+            if 0 <= day_index < 7:
+                key = (employee["id"], day_index)
+                if (x - self.NAME_WIDTH) % self.DAY_WIDTH >= self.DAY_WIDTH - 28:
+                    self.open_reminder(*key)
+                else:
+                    self._active_assignment_key = key
+                    self.assignment_menu.tk_popup(event.x_root, event.y_root)
+            elif employee["categoria"] == "ETT" and x >= self.NAME_WIDTH - 82:
+                self._active_ett_employee = employee["id"]
+                self.ett_menu.tk_popup(event.x_root, event.y_root)
+        elif row["kind"] == "client" and 0 <= day_index < 7:
+            self._edit_client(row, day_index)
 
     def _choose_assignment(self, value):
         key = self._active_assignment_key
-        if key not in self.assignment_vars:
+        if key in self.assignment_vars:
+            self.assignment_vars[key].set(value)
+            self._assignment_changed(key[0], key[1], value)
+
+    def _choose_ett_hours(self, hours):
+        if self._active_ett_employee in self.ett_targets:
+            self.ett_targets[self._active_ett_employee] = int(hours)
+            self.recalculate()
+
+    def _edit_client(self, row, day_index):
+        variable = self.client_vars[(row["service"], day_index)]
+        self._editor_previous = variable.get()
+        x0, y0 = self.NAME_WIDTH + day_index * self.DAY_WIDTH, row["y0"]
+        background = self._theme_color(("#F9F9FA", "#343638"))
+        foreground = self._theme_color(("#111111", "#F3F3F3"))
+        self._editor = tk.Entry(
+            self.canvas, textvariable=variable, justify="center", font=self.font_bold, bd=1, relief="solid",
+            bg=background, fg=foreground, insertbackground=foreground, selectbackground="#3B8ED0",
+        )
+        self._editor_item = self.canvas.create_window(
+            x0 + 3, y0 + 3, width=self.DAY_WIDTH - 6, height=row["y1"] - y0 - 6, anchor="nw", window=self._editor,
+        )
+        self._editor.bind("<Return>", lambda _event: self._close_editor(commit=True))
+        self._editor.bind("<Escape>", lambda _event: self._close_editor(commit=False))
+        self._editor.bind("<FocusOut>", lambda _event: self._close_editor(commit=True))
+        self._editor.focus_set()
+        self._editor.select_range(0, "end")
+
+    def _close_editor(self, commit=True):
+        editor, item = self._editor, self._editor_item
+        if editor is None:
             return
-        self.assignment_vars[key].set(value)
-        self._assignment_changed(key[0], key[1], value)
+        variable_name = str(editor.cget("textvariable"))
+        if not commit:
+            try:
+                editor.setvar(variable_name, self._editor_previous)
+            except tk.TclError:
+                pass
+        self._editor = self._editor_item = self._editor_previous = None
+        if item is not None:
+            self.canvas.delete(item)
+        editor.destroy()
+        self._redraw()
+
+    def _cell(self, x0, y0, x1, y1, fill, text="", text_color=None, font=None, anchor="center"):
+        fill = self._theme_color(fill)
+        text_color = self._theme_color(text_color or ("#111111", "#F3F3F3"))
+        self._draw.rounded_rectangle((x0 + 2, y0 + 2, x1 - 2, y1 - 2), radius=4, fill=fill)
+        if text:
+            tx, text_anchor = ((x0 + 8, "lm") if anchor == "w" else ((x0 + x1) / 2, "mm"))
+            self._draw.text((tx, (y0 + y1) / 2), text=text, fill=text_color, font=font or self.image_font_normal, anchor=text_anchor)
+
+    def _assignment_style(self, key, value):
+        reminder = self.reminders.get(key)
+        color = REMINDER_COLORS.get(reminder["color"]) if reminder else VALUE_COLORS.get(value)
+        if color:
+            return color, "white", self.image_font_special if value not in self.shifts else self.image_font_shift
+        if value:
+            return ("#3B8ED0", "#159DB5"), "white", self.image_font_shift
+        return ("#F9F9FA", "#159DB5"), ("#111111", "white"), self.image_font_normal
+
+    def _redraw(self):
+        if self._drawing_suspended or not hasattr(self, "canvas"):
+            return
+        self.canvas.delete("table")
+        surface = self._theme_color(TABLE_SURFACE)
+        self.canvas.configure(bg=surface)
+        height = self.rows[-1]["y1"] + 4
+        image = Image.new("RGB", (self.TABLE_WIDTH, height), surface)
+        self._draw = ImageDraw.Draw(image)
+        for row in self.rows:
+            y0, y1, kind = row["y0"], row["y1"], row["kind"]
+            if kind == "header":
+                self._cell(0, y0, self.NAME_WIDTH, y1, TABLE_SURFACE, "Empleado", font=self.image_font_heading, anchor="w")
+                for day, title in enumerate(DAYS):
+                    x0 = self.NAME_WIDTH + day * self.DAY_WIDTH
+                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, TABLE_SURFACE, title, font=self.image_font_heading)
+            elif kind == "section":
+                self._cell(0, y0, self.TABLE_WIDTH, y1, ("#F4E84A", "#756D10"), row["title"], ("#111111", "white"), self.image_font_bold, "w")
+            elif kind == "employee":
+                employee, name_end = row["employee"], self.NAME_WIDTH
+                if employee["categoria"] == "ETT":
+                    name_end -= 82
+                self._cell(0, y0, name_end, y1, TABLE_SURFACE, employee["nombre"], font=self.image_font_bold, anchor="w")
+                if employee["categoria"] == "ETT":
+                    employee_id = employee["id"]
+                    self._cell(name_end, y0, self.NAME_WIDTH, y1, self.ett_hour_colors.get(employee_id, ("#E67E22", "#CA6F1E")), f'{self.ett_hour_vars[employee_id].get()}  ▾', "white", self.image_font_small)
+                for day in range(7):
+                    key, x0 = (employee["id"], day), self.NAME_WIDTH + day * self.DAY_WIDTH
+                    value = self.assignment_vars[key].get()
+                    background, foreground, font = self._assignment_style(key, value)
+                    self._cell(x0, y0, x0 + self.DAY_WIDTH - 28, y1, background, f"{value}  ▾" if value else "▾", foreground, font)
+                    reminder = self.reminders.get(key)
+                    reminder_color = REMINDER_COLORS.get(reminder["color"]) if reminder else ("#AEB5BA", "#4E555A")
+                    self._cell(x0 + self.DAY_WIDTH - 28, y0, x0 + self.DAY_WIDTH, y1, reminder_color, "!" if reminder else "●", "white", self.image_font_bold)
+            elif kind == "client":
+                service = row["service"]
+                self._cell(0, y0, self.NAME_WIDTH, y1, TABLE_SURFACE, service.replace("_", " ").title(), font=self.image_font_bold, anchor="w")
+                for day in range(7):
+                    x0 = self.NAME_WIDTH + day * self.DAY_WIDTH
+                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, ("#F9F9FA", "#343638"), self.client_vars[(service, day)].get(), font=self.image_font_bold)
+            elif kind == "coverage":
+                service = row["service"]
+                self._cell(0, y0, self.NAME_WIDTH, y1, TABLE_SURFACE, service.title(), font=self.image_font_normal, anchor="w")
+                for day in range(7):
+                    x0, display = self.NAME_WIDTH + day * self.DAY_WIDTH, self.coverage_labels[(service, day)]
+                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, display.cget("fg_color"), display.cget("text"), font=self.image_font_bold)
+            elif kind in ("opening", "guard"):
+                opening = kind == "opening"
+                label = "Apertura" if opening else "Guardia"
+                heading_color = ("#B8E33D", "#466819") if opening else ("#B9D7EA", "#1F4E68")
+                self._cell(0, y0, self.NAME_WIDTH, y1, heading_color, label, font=self.image_font_bold, anchor="w")
+                values = self.opening_labels if opening else self.guard_labels
+                for day in range(7):
+                    x0, display = self.NAME_WIDTH + day * self.DAY_WIDTH, values[day]
+                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, display.cget("fg_color"), display.cget("text"), display.cget("text_color"), self.image_font_small)
+            elif kind == "reminders":
+                self._cell(0, y0, self.TABLE_WIDTH, y1, ("#FFF3CD", "#55450D"), self.reminder_summary.cget("text"), font=self.image_font_small, anchor="w")
+        self._draw = None
+        self._table_image = ImageTk.PhotoImage(image)
+        self.canvas.create_image(0, 0, image=self._table_image, anchor="nw", tags="table")
 
     def apply_appearance(self):
-        """Refresh the few native table controls after a light/dark mode change."""
-        surface = self._theme_color(TABLE_SURFACE)
-        for cell in self.assignment_cells.values():
-            cell.configure(bg=surface)
-        if self.assignment_menu is not None:
-            self.assignment_menu.configure(
-                bg=self._theme_color(("#F5F5F5", "#303030")),
-                fg=self._theme_color(("#111111", "#F3F3F3")),
-                activebackground=self._theme_color(("#3B8ED0", "#159DB5")),
-            )
-        for key, variable in self.assignment_vars.items():
-            self._paint_assignment(key, variable.get())
+        self.toolbar.configure(bg=self._theme_color(TABLE_SURFACE))
+        self.canvas_frame.configure(bg=self._theme_color(TABLE_SURFACE))
+        self._build_assignment_menu()
+        self._build_ett_menu()
+        self._redraw()
 
-    def _apply_theme_surfaces(self, widget):
-        for child in widget.winfo_children():
-            if isinstance(child, ctk.CTkLabel) and child.cget("fg_color") == "transparent":
-                child.configure(fg_color=TABLE_SURFACE)
-            self._apply_theme_surfaces(child)
+    def apply_display_settings(self):
+        """Apply font-size and theme preferences without rebuilding the table."""
+        self._create_shared_fonts()
+        self.apply_appearance()
 
     def refresh_catalogues(self):
-        preserved = {(key): variable.get() for key, variable in self.assignment_vars.items()}
-        clients = {(key): variable.get() for key, variable in self.client_vars.items()}
+        preserved = {key: variable.get() for key, variable in self.assignment_vars.items()}
+        clients = {key: variable.get() for key, variable in self.client_vars.items()}
+        targets = dict(self.ett_targets)
         self._render_grid()
+        self.ett_targets.update({key: value for key, value in targets.items() if key in self.ett_hour_vars})
         self.reminders = {key: value for key, value in self.reminders.items() if key in self.assignment_vars}
         for key, value in preserved.items():
             if key in self.assignment_vars and value in self.options:
                 self.assignment_vars[key].set(value)
-                self._paint_assignment(key, value)
         for key, value in clients.items():
             if key in self.client_vars:
                 self.client_vars[key].set(value)
@@ -310,12 +430,11 @@ class ScheduleModule:
     def _assignment_changed(self, employee_id, day_index, value):
         if value not in self.shifts:
             self.reminders.pop((employee_id, day_index), None)
-        self._paint_assignment((employee_id, day_index), value)
         self.recalculate()
 
     def _ett_target_changed(self, employee_id, value):
         try:
-            self.ett_targets[employee_id] = int(value.split()[0])
+            self.ett_targets[employee_id] = int(str(value).split()[0])
         except (ValueError, IndexError):
             return
         self.recalculate()
@@ -326,11 +445,7 @@ class ScheduleModule:
 
     def _refresh_ett_hours(self):
         for employee_id, variable in self.ett_hour_vars.items():
-            assigned = 0.0
-            for day_index in range(7):
-                shift = self.shifts.get(self.assignment_vars[(employee_id, day_index)].get())
-                if shift:
-                    assigned += float(shift["horas"])
+            assigned = sum(float(self.shifts[value]["horas"]) for day in range(7) if (value := self.assignment_vars[(employee_id, day)].get()) in self.shifts)
             target = self.ett_targets.get(employee_id, 40)
             variable.set(f"{self._hours_text(assigned)}/{target} h")
             if target == 0:
@@ -341,43 +456,10 @@ class ScheduleModule:
                 color = ("#C0392B", "#A93226")
             else:
                 color = ("#E67E22", "#CA6F1E")
-            self.ett_hour_widgets[employee_id].configure(fg_color=color, button_color=color)
+            self.ett_hour_colors[employee_id] = color
 
-    def _paint_assignment(self, key, value):
-        widget = self.assignment_widgets[key]
-        if value in self.shifts:
-            font = self.assignment_shift_font
-        elif value:
-            font = self.assignment_special_font
-        else:
-            font = self.assignment_font
-        reminder = self.reminders.get(key)
-        color = REMINDER_COLORS.get(reminder["color"]) if reminder else VALUE_COLORS.get(value)
-        if color:
-            background = self._theme_color(color)
-            foreground = "white"
-        elif not value:
-            background = self._theme_color(("#F9F9FA", "#159DB5"))
-            foreground = self._theme_color(("#111111", "white"))
-        else:
-            background = self._theme_color(("#3B8ED0", "#159DB5"))
-            foreground = "white"
-        widget.configure(
-            text=f"{value}  ▾" if value else "▾", font=font,
-            bg=background, activebackground=background,
-            fg=foreground, activeforeground=foreground,
-        )
-        button = self.reminder_buttons[key]
-        if reminder:
-            reminder_background = self._theme_color(color)
-            text = "!"
-        else:
-            reminder_background = self._theme_color(("#AEB5BA", "#4E555A"))
-            text = "●"
-        button.configure(
-            text=text, bg=reminder_background, activebackground=reminder_background,
-            fg="white", activeforeground="white",
-        )
+    def _paint_assignment(self, _key, _value):
+        self._redraw()
 
     def open_reminder(self, employee_id, day_index):
         value = self.assignment_vars[(employee_id, day_index)].get()
@@ -391,10 +473,7 @@ class ScheduleModule:
         remember_window(dialog, "shift_reminder", "540x340")
         dialog.transient(self.parent.winfo_toplevel())
         dialog.grab_set()
-        ctk.CTkLabel(
-            dialog, text=f'{employee["nombre"]} · {DAYS[day_index]} · {value}',
-            font=ctk.CTkFont(size=17, weight="bold"),
-        ).pack(pady=(20, 12))
+        ctk.CTkLabel(dialog, text=f'{employee["nombre"]} · {DAYS[day_index]} · {value}', font=ctk.CTkFont(size=17, weight="bold")).pack(pady=(20, 12))
         ctk.CTkLabel(dialog, text="Color del aviso").pack(anchor="w", padx=24)
         color_var = ctk.StringVar(value=current["color"])
         ctk.CTkOptionMenu(dialog, values=list(REMINDER_COLORS), variable=color_var).pack(fill="x", padx=24, pady=(3, 12))
@@ -407,13 +486,11 @@ class ScheduleModule:
 
         def save_reminder():
             self.reminders[(employee_id, day_index)] = {"color": color_var.get(), "nota": note.get("1.0", "end").strip()}
-            self._paint_assignment((employee_id, day_index), value)
             self.recalculate()
             dialog.destroy()
 
         def clear_reminder():
             self.reminders.pop((employee_id, day_index), None)
-            self._paint_assignment((employee_id, day_index), value)
             self.recalculate()
             dialog.destroy()
 
@@ -430,19 +507,12 @@ class ScheduleModule:
             self.week_var.set(monday.strftime("%d/%m/%Y"))
             self.week_title.configure(text=f"Semana del {monday:%d/%m/%Y} al {(monday + timedelta(days=6)):%d/%m/%Y}")
             with connect() as conn:
-                assignment_rows = conn.execute(
-                    "SELECT empleado_id,fecha,valor,color,nota FROM asignaciones WHERE fecha BETWEEN ? AND ?", (dates[0], dates[-1])
-                ).fetchall()
+                assignment_rows = conn.execute("SELECT empleado_id,fecha,valor,color,nota FROM asignaciones WHERE fecha BETWEEN ? AND ?", (dates[0], dates[-1])).fetchall()
                 assignments = {(row["empleado_id"], row["fecha"]): row["valor"] for row in assignment_rows}
                 saved_reminders = {(row["empleado_id"], row["fecha"]): {"color": row["color"], "nota": row["nota"]} for row in assignment_rows if row["color"]}
-                clients = {row["fecha"]: row for row in conn.execute(
-                    "SELECT * FROM clientes WHERE fecha BETWEEN ? AND ?", (dates[0], dates[-1])
-                )}
-                ett_targets = {
-                    row["empleado_id"]: row["horas_objetivo"] for row in conn.execute(
-                        "SELECT empleado_id,horas_objetivo FROM ett_horas_semana WHERE semana=?", (dates[0],)
-                    )
-                }
+                clients = {row["fecha"]: row for row in conn.execute("SELECT * FROM clientes WHERE fecha BETWEEN ? AND ?", (dates[0], dates[-1]))}
+                ett_targets = {row["empleado_id"]: row["horas_objetivo"] for row in conn.execute("SELECT empleado_id,horas_objetivo FROM ett_horas_semana WHERE semana=?", (dates[0],))}
+            self._drawing_suspended = True
             self.ett_targets = {employee_id: int(ett_targets.get(employee_id, 40)) for employee_id in self.ett_hour_vars}
             self.reminders.clear()
             for (employee_id, day_index), variable in self.assignment_vars.items():
@@ -451,12 +521,13 @@ class ScheduleModule:
                 reminder = saved_reminders.get((employee_id, dates[day_index]))
                 if reminder:
                     self.reminders[(employee_id, day_index)] = reminder
-                self._paint_assignment((employee_id, day_index), variable.get())
             for (service, day_index), variable in self.client_vars.items():
                 row = clients.get(dates[day_index])
                 variable.set(str(row[service] if row else 0))
+            self._drawing_suspended = False
             self.recalculate()
         except Exception as exc:
+            self._drawing_suspended = False
             messagebox.showerror("No se pudo cargar", str(exc), parent=self.parent)
 
     def recalculate(self):
@@ -464,11 +535,9 @@ class ScheduleModule:
         employee_names = {row["id"]: row["nombre"] for row in self.employees}
         for day_index in range(7):
             counts = {service: 0 for service in ("desayuno", "almuerzo", "cena")}
-            openings = []
-            guards = []
+            openings, guards = [], []
             for employee in self.employees:
-                value = self.assignment_vars[(employee["id"], day_index)].get()
-                shift = self.shifts.get(value)
+                shift = self.shifts.get(self.assignment_vars[(employee["id"], day_index)].get())
                 if not shift:
                     continue
                 for service in counts:
@@ -479,42 +548,31 @@ class ScheduleModule:
                     guards.append(employee_names[employee["id"]])
             for service, count in counts.items():
                 limits = settings["coverage"][service]
-                if count >= int(limits["purple"]):
-                    color = "purple"
-                elif count >= int(limits["green"]):
-                    color = "green"
-                elif count >= int(limits["yellow"]):
-                    color = "yellow"
-                else:
-                    color = "red"
+                color = "purple" if count >= int(limits["purple"]) else "green" if count >= int(limits["green"]) else "yellow" if count >= int(limits["yellow"]) else "red"
                 self.coverage_labels[(service, day_index)].configure(text=str(count), fg_color=COVERAGE_COLORS[color])
             opening_label = self.opening_labels[day_index]
             if len(openings) > 1:
                 opening_label.configure(text="DUPLICADO: " + " / ".join(openings), fg_color=VALUE_COLORS["FALTA"], text_color="white")
             elif openings:
-                opening_label.configure(text=openings[0], fg_color=("#D9F09B", "#345019"), text_color=("gray10", "white"))
+                opening_label.configure(text=openings[0], fg_color=("#D9F09B", "#345019"), text_color=("#111111", "white"))
             else:
-                opening_label.configure(text="SIN APERTURA", fg_color=("#FFD2B3", "#713B18"), text_color=("gray10", "white"))
+                opening_label.configure(text="SIN APERTURA", fg_color=("#FFD2B3", "#713B18"), text_color=("#111111", "white"))
             guard_label = self.guard_labels[day_index]
             if len(guards) > 1:
                 guard_label.configure(text="DUPLICADO: " + " / ".join(guards), fg_color=VALUE_COLORS["FALTA"], text_color="white")
             elif guards:
-                guard_label.configure(text=guards[0], fg_color=("#D7EBF7", "#245B78"), text_color=("gray10", "white"))
+                guard_label.configure(text=guards[0], fg_color=("#D7EBF7", "#245B78"), text_color=("#111111", "white"))
             else:
-                guard_label.configure(text="SIN GUARDIA", fg_color=("#FFD2B3", "#713B18"), text_color=("gray10", "white"))
+                guard_label.configure(text="SIN GUARDIA", fg_color=("#FFD2B3", "#713B18"), text_color=("#111111", "white"))
         self._refresh_ett_hours()
-        employee_names = {row["id"]: row["nombre"] for row in self.employees}
-        reminder_lines = []
-        for (employee_id, day_index), reminder in sorted(self.reminders.items(), key=lambda item: (item[0][1], item[0][0])):
-            note = reminder["nota"] or "Sin detalle"
-            reminder_lines.append(f'{DAYS[day_index]} · {employee_names[employee_id]}: {note}')
-        self.reminder_summary.configure(
-            text="Recordatorios: " + "   |   ".join(reminder_lines) if reminder_lines else "Sin recordatorios especiales esta semana."
-        )
+        reminder_lines = [f'{DAYS[day]} · {employee_names[employee]}: {reminder["nota"] or "Sin detalle"}' for (employee, day), reminder in sorted(self.reminders.items(), key=lambda item: (item[0][1], item[0][0]))]
+        self.reminder_summary.configure(text="Recordatorios: " + "   |   ".join(reminder_lines) if reminder_lines else "Sin recordatorios especiales esta semana.")
+        self._redraw()
 
     def save(self):
+        self._close_editor(commit=True)
         try:
-            monday, dates = self._dates()
+            _monday, dates = self._dates()
             assignments = []
             for (employee_id, day_index), variable in self.assignment_vars.items():
                 value = variable.get().strip()
@@ -525,8 +583,7 @@ class ScheduleModule:
             for day_index, current_date in enumerate(dates):
                 numbers = []
                 for service in ("desayuno", "almuerzo", "cena", "todo_incluido"):
-                    raw = self.client_vars[(service, day_index)].get().strip() or "0"
-                    number = int(raw)
+                    number = int(self.client_vars[(service, day_index)].get().strip() or "0")
                     if number < 0:
                         raise ValueError("Los clientes no pueden ser negativos.")
                     numbers.append(number)
@@ -538,12 +595,9 @@ class ScheduleModule:
                     VALUES (?,?,?,?,?) ON CONFLICT(fecha) DO UPDATE SET desayuno=excluded.desayuno,
                     almuerzo=excluded.almuerzo,cena=excluded.cena,todo_incluido=excluded.todo_incluido""", clients)
                 conn.execute("DELETE FROM ett_horas_semana WHERE semana=?", (dates[0],))
-                conn.executemany(
-                    "INSERT INTO ett_horas_semana(semana,empleado_id,horas_objetivo) VALUES (?,?,?)",
-                    [(dates[0], employee_id, self.ett_targets.get(employee_id, 40)) for employee_id in self.ett_hour_vars],
-                )
+                conn.executemany("INSERT INTO ett_horas_semana(semana,empleado_id,horas_objetivo) VALUES (?,?,?)", [(dates[0], employee_id, self.ett_targets.get(employee_id, 40)) for employee_id in self.ett_hour_vars])
             self.recalculate()
-            duplicates = [DAYS[index] for index, label in self.opening_labels.items() if label.cget("text").startswith("DUPLICADO")]
+            duplicates = [DAYS[index] for index, label in self.opening_labels.items() if str(label.cget("text")).startswith("DUPLICADO")]
             warning = f"\n\nRevisa aperturas duplicadas: {', '.join(duplicates)}." if duplicates else ""
             messagebox.showinfo("Cuadrante", f"Semana guardada correctamente.{warning}", parent=self.parent)
         except (ValueError, TypeError) as exc:
@@ -552,6 +606,7 @@ class ScheduleModule:
             messagebox.showerror("No se pudo guardar", str(exc), parent=self.parent)
 
     def export_pdf(self):
+        self._close_editor(commit=True)
         try:
             from reports import export_schedule_pdf
             monday, _dates = self._dates()
