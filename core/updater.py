@@ -16,6 +16,15 @@ from core.backup import create_database_backup
 from core.paths import APP_DIR
 from core.version import __version__
 
+try:
+    # En Windows usa el mismo almacén de certificados de confianza que el
+    # navegador. Es importante en redes de trabajo con inspección HTTPS.
+    import truststore
+
+    truststore.inject_into_ssl()
+except (ImportError, OSError):
+    pass
+
 
 # GitHub mantiene redirecciones cuando cambia el nombre del repositorio. Usar
 # esta ruta histórica permite actualizar instalaciones anteriores al cambio.
@@ -71,7 +80,7 @@ def _asset_suffix() -> str:
     raise UpdateError("Este sistema todavía no admite actualizaciones automáticas.")
 
 
-def check_for_update(include_prereleases=True, timeout=4) -> UpdateInfo | None:
+def check_for_update(include_prereleases=True, timeout=12) -> UpdateInfo | None:
     request = urllib.request.Request(
         RELEASES_API,
         headers={"Accept": "application/vnd.github+json", "User-Agent": f"CuadrantO/{__version__}"},

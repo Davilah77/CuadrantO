@@ -62,6 +62,7 @@ class DisplayValue:
 class ScheduleModule:
     MIN_NAME_WIDTH = 235
     MIN_DAY_WIDTH = 122
+    MAX_DAY_WIDTH = 190
     MIN_TABLE_WIDTH = MIN_NAME_WIDTH + MIN_DAY_WIDTH * 7
 
     def __init__(self, parent, app):
@@ -121,12 +122,13 @@ class ScheduleModule:
                     continue
             return ImageFont.load_default()
 
-        self.image_font_normal = image_font(regular_candidates, 10)
-        self.image_font_bold = image_font(bold_candidates, 10)
-        self.image_font_heading = image_font(bold_candidates, 11)
-        self.image_font_shift = image_font(bold_candidates, 12)
-        self.image_font_special = image_font(bold_candidates, 9)
-        self.image_font_small = image_font(regular_candidates, 9)
+        self.image_font_normal = image_font(regular_candidates, size(10))
+        self.image_font_bold = image_font(bold_candidates, size(10))
+        self.image_font_name = image_font(bold_candidates, size(12))
+        self.image_font_heading = image_font(bold_candidates, size(11))
+        self.image_font_shift = image_font(bold_candidates, size(12))
+        self.image_font_special = image_font(bold_candidates, size(9))
+        self.image_font_small = image_font(regular_candidates, size(9))
 
     @staticmethod
     def _theme_color(value):
@@ -266,8 +268,8 @@ class ScheduleModule:
         if event.width <= 1:
             return
         table_width = max(self.MIN_TABLE_WIDTH, int(event.width))
-        name_width = max(self.MIN_NAME_WIDTH, round(table_width * 0.20))
-        day_width = (table_width - name_width) / 7
+        day_width = min(self.MAX_DAY_WIDTH, max(self.MIN_DAY_WIDTH, (table_width - self.MIN_NAME_WIDTH) / 7))
+        name_width = round(table_width - day_width * 7)
         if table_width == self.table_width and name_width == self.name_width:
             return
         self.table_width = table_width
@@ -396,7 +398,7 @@ class ScheduleModule:
                 employee, name_end = row["employee"], self.name_width
                 if employee["categoria"] == "ETT":
                     name_end -= 82
-                self._cell(0, y0, name_end, y1, TABLE_SURFACE, employee["nombre"], font=self.image_font_bold, anchor="w")
+                self._cell(0, y0, name_end, y1, TABLE_SURFACE, employee["nombre"], font=self.image_font_name, anchor="w")
                 if employee["categoria"] == "ETT":
                     employee_id = employee["id"]
                     self._cell(name_end, y0, self.name_width, y1, self.ett_hour_colors.get(employee_id, ("#E67E22", "#CA6F1E")), self.ett_hour_vars[employee_id].get(), "white", self.image_font_small)
