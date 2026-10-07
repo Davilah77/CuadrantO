@@ -60,9 +60,9 @@ class DisplayValue:
 
 
 class ScheduleModule:
-    NAME_WIDTH = 235
-    DAY_WIDTH = 122
-    TABLE_WIDTH = NAME_WIDTH + DAY_WIDTH * 7
+    MIN_NAME_WIDTH = 235
+    MIN_DAY_WIDTH = 122
+    MIN_TABLE_WIDTH = MIN_NAME_WIDTH + MIN_DAY_WIDTH * 7
 
     def __init__(self, parent, app):
         self.parent = parent
@@ -87,6 +87,10 @@ class ScheduleModule:
         self._table_image = None
         self._draw = None
         self._drawing_suspended = False
+        self.name_width = self.MIN_NAME_WIDTH
+        self.day_width = float(self.MIN_DAY_WIDTH)
+        self.table_width = self.MIN_TABLE_WIDTH
+        self._resize_job = None
         self._create_shared_fonts()
         self._build()
         self.load_week()
@@ -154,6 +158,7 @@ class ScheduleModule:
         self.hscroll.pack(side="bottom", fill="x", padx=3, pady=(0, 3))
         self.canvas.pack(side="left", fill="both", expand=True, padx=(3, 0), pady=(3, 0))
         self.canvas.bind("<Button-1>", self._on_canvas_click)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
         self.canvas.bind("<MouseWheel>", self._on_mousewheel)
         self.canvas.bind("<Shift-MouseWheel>", self._on_shift_mousewheel)
         self.canvas.bind("<Button-4>", lambda _event: self.canvas.yview_scroll(-3, "units"))
@@ -218,7 +223,7 @@ class ScheduleModule:
             self.guard_labels[day_index] = DisplayValue("—", fg_color=("#D7EBF7", "#245B78"), text_color=("#111111", "white"))
         self.reminder_summary = DisplayValue("Sin recordatorios especiales esta semana.")
         self._add_row("reminders", 58)
-        self.canvas.configure(scrollregion=(0, 0, self.TABLE_WIDTH, self.rows[-1]["y1"] + 4))
+        self.canvas.configure(scrollregion=(0, 0, self.table_width, self.rows[-1]["y1"] + 4))
         self._drawing_suspended = False
         self._redraw()
 
@@ -254,23 +259,49 @@ class ScheduleModule:
     def _row_at(self, y):
         return next((row for row in self.rows if row["y0"] <= y < row["y1"]), None)
 
+    def _day_x(self, day_index):
+        return round(self.name_width + day_index * self.day_width)
+
+    def _on_canvas_configure(self, event):
+        if event.width <= 1:
+            return
+        table_width = max(self.MIN_TABLE_WIDTH, int(event.width))
+        name_width = max(self.MIN_NAME_WIDTH, round(table_width * 0.20))
+        day_width = (table_width - name_width) / 7
+        if table_width == self.table_width and name_width == self.name_width:
+            return
+        self.table_width = table_width
+        self.name_width = name_width
+        self.day_width = day_width
+        self.canvas.configure(scrollregion=(0, 0, self.table_width, self.rows[-1]["y1"] + 4))
+        if self._resize_job is not None:
+            self.canvas.after_cancel(self._resize_job)
+        # Durante el arrastre conservamos la imagen actual; al detenerse se
+        # reconstruye una sola vez, evitando el efecto de dibujar celda a celda.
+        self._resize_job = self.canvas.after(70, self._finish_canvas_resize)
+
+    def _finish_canvas_resize(self):
+        self._resize_job = None
+        self._close_editor(commit=True)
+        self._redraw()
+
     def _on_canvas_click(self, event):
         self._close_editor(commit=True)
         x, y = self.canvas.canvasx(event.x), self.canvas.canvasy(event.y)
         row = self._row_at(y)
         if not row:
             return
-        day_index = int((x - self.NAME_WIDTH) // self.DAY_WIDTH) if x >= self.NAME_WIDTH else -1
+        day_index = int((x - self.name_width) // self.day_width) if x >= self.name_width else -1
         if row["kind"] == "employee":
             employee = row["employee"]
             if 0 <= day_index < 7:
                 key = (employee["id"], day_index)
-                if (x - self.NAME_WIDTH) % self.DAY_WIDTH >= self.DAY_WIDTH - 28:
+                if x >= self._day_x(day_index + 1) - 28:
                     self.open_reminder(*key)
                 else:
                     self._active_assignment_key = key
                     self.assignment_menu.tk_popup(event.x_root, event.y_root)
-            elif employee["categoria"] == "ETT" and x >= self.NAME_WIDTH - 82:
+            elif employee["categoria"] == "ETT" and x >= self.name_width - 82:
                 self._active_ett_employee = employee["id"]
                 self.ett_menu.tk_popup(event.x_root, event.y_root)
         elif row["kind"] == "client" and 0 <= day_index < 7:
@@ -290,7 +321,7 @@ class ScheduleModule:
     def _edit_client(self, row, day_index):
         variable = self.client_vars[(row["service"], day_index)]
         self._editor_previous = variable.get()
-        x0, y0 = self.NAME_WIDTH + day_index * self.DAY_WIDTH, row["y0"]
+        x0, x1, y0 = self._day_x(day_index), self._day_x(day_index + 1), row["y0"]
         background = self._theme_color(("#F9F9FA", "#343638"))
         foreground = self._theme_color(("#111111", "#F3F3F3"))
         self._editor = tk.Entry(
@@ -298,7 +329,7 @@ class ScheduleModule:
             bg=background, fg=foreground, insertbackground=foreground, selectbackground="#3B8ED0",
         )
         self._editor_item = self.canvas.create_window(
-            x0 + 3, y0 + 3, width=self.DAY_WIDTH - 6, height=row["y1"] - y0 - 6, anchor="nw", window=self._editor,
+            x0 + 3, y0 + 3, width=x1 - x0 - 6, height=row["y1"] - y0 - 6, anchor="nw", window=self._editor,
         )
         self._editor.bind("<Return>", lambda _event: self._close_editor(commit=True))
         self._editor.bind("<Escape>", lambda _event: self._close_editor(commit=False))
@@ -330,6 +361,10 @@ class ScheduleModule:
             tx, text_anchor = ((x0 + 8, "lm") if anchor == "w" else ((x0 + x1) / 2, "mm"))
             self._draw.text((tx, (y0 + y1) / 2), text=text, fill=text_color, font=font or self.image_font_normal, anchor=text_anchor)
 
+    def _dropdown_arrow(self, x, y, color):
+        color = self._theme_color(color)
+        self._draw.polygon(((x - 4, y - 2), (x + 4, y - 2), (x, y + 3)), fill=color)
+
     def _assignment_style(self, key, value):
         reminder = self.reminders.get(key)
         color = REMINDER_COLORS.get(reminder["color"]) if reminder else VALUE_COLORS.get(value)
@@ -346,56 +381,58 @@ class ScheduleModule:
         surface = self._theme_color(TABLE_SURFACE)
         self.canvas.configure(bg=surface)
         height = self.rows[-1]["y1"] + 4
-        image = Image.new("RGB", (self.TABLE_WIDTH, height), surface)
+        image = Image.new("RGB", (self.table_width, height), surface)
         self._draw = ImageDraw.Draw(image)
         for row in self.rows:
             y0, y1, kind = row["y0"], row["y1"], row["kind"]
             if kind == "header":
-                self._cell(0, y0, self.NAME_WIDTH, y1, TABLE_SURFACE, "Empleado", font=self.image_font_heading, anchor="w")
+                self._cell(0, y0, self.name_width, y1, TABLE_SURFACE, "Empleado", font=self.image_font_heading, anchor="w")
                 for day, title in enumerate(DAYS):
-                    x0 = self.NAME_WIDTH + day * self.DAY_WIDTH
-                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, TABLE_SURFACE, title, font=self.image_font_heading)
+                    x0, x1 = self._day_x(day), self._day_x(day + 1)
+                    self._cell(x0, y0, x1, y1, TABLE_SURFACE, title, font=self.image_font_heading)
             elif kind == "section":
-                self._cell(0, y0, self.TABLE_WIDTH, y1, ("#F4E84A", "#756D10"), row["title"], ("#111111", "white"), self.image_font_bold, "w")
+                self._cell(0, y0, self.table_width, y1, ("#F4E84A", "#756D10"), row["title"], ("#111111", "white"), self.image_font_bold, "w")
             elif kind == "employee":
-                employee, name_end = row["employee"], self.NAME_WIDTH
+                employee, name_end = row["employee"], self.name_width
                 if employee["categoria"] == "ETT":
                     name_end -= 82
                 self._cell(0, y0, name_end, y1, TABLE_SURFACE, employee["nombre"], font=self.image_font_bold, anchor="w")
                 if employee["categoria"] == "ETT":
                     employee_id = employee["id"]
-                    self._cell(name_end, y0, self.NAME_WIDTH, y1, self.ett_hour_colors.get(employee_id, ("#E67E22", "#CA6F1E")), f'{self.ett_hour_vars[employee_id].get()}  ▾', "white", self.image_font_small)
+                    self._cell(name_end, y0, self.name_width, y1, self.ett_hour_colors.get(employee_id, ("#E67E22", "#CA6F1E")), self.ett_hour_vars[employee_id].get(), "white", self.image_font_small)
+                    self._dropdown_arrow(self.name_width - 11, (y0 + y1) / 2, "white")
                 for day in range(7):
-                    key, x0 = (employee["id"], day), self.NAME_WIDTH + day * self.DAY_WIDTH
+                    key, x0, x1 = (employee["id"], day), self._day_x(day), self._day_x(day + 1)
                     value = self.assignment_vars[key].get()
                     background, foreground, font = self._assignment_style(key, value)
-                    self._cell(x0, y0, x0 + self.DAY_WIDTH - 28, y1, background, f"{value}  ▾" if value else "▾", foreground, font)
+                    self._cell(x0, y0, x1 - 28, y1, background, value, foreground, font)
+                    self._dropdown_arrow(x1 - 39, (y0 + y1) / 2, foreground)
                     reminder = self.reminders.get(key)
                     reminder_color = REMINDER_COLORS.get(reminder["color"]) if reminder else ("#AEB5BA", "#4E555A")
-                    self._cell(x0 + self.DAY_WIDTH - 28, y0, x0 + self.DAY_WIDTH, y1, reminder_color, "!" if reminder else "●", "white", self.image_font_bold)
+                    self._cell(x1 - 28, y0, x1, y1, reminder_color, "!" if reminder else "●", "white", self.image_font_bold)
             elif kind == "client":
                 service = row["service"]
-                self._cell(0, y0, self.NAME_WIDTH, y1, TABLE_SURFACE, service.replace("_", " ").title(), font=self.image_font_bold, anchor="w")
+                self._cell(0, y0, self.name_width, y1, TABLE_SURFACE, service.replace("_", " ").title(), font=self.image_font_bold, anchor="w")
                 for day in range(7):
-                    x0 = self.NAME_WIDTH + day * self.DAY_WIDTH
-                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, ("#F9F9FA", "#343638"), self.client_vars[(service, day)].get(), font=self.image_font_bold)
+                    x0, x1 = self._day_x(day), self._day_x(day + 1)
+                    self._cell(x0, y0, x1, y1, ("#F9F9FA", "#343638"), self.client_vars[(service, day)].get(), font=self.image_font_bold)
             elif kind == "coverage":
                 service = row["service"]
-                self._cell(0, y0, self.NAME_WIDTH, y1, TABLE_SURFACE, service.title(), font=self.image_font_normal, anchor="w")
+                self._cell(0, y0, self.name_width, y1, TABLE_SURFACE, service.title(), font=self.image_font_normal, anchor="w")
                 for day in range(7):
-                    x0, display = self.NAME_WIDTH + day * self.DAY_WIDTH, self.coverage_labels[(service, day)]
-                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, display.cget("fg_color"), display.cget("text"), font=self.image_font_bold)
+                    x0, x1, display = self._day_x(day), self._day_x(day + 1), self.coverage_labels[(service, day)]
+                    self._cell(x0, y0, x1, y1, display.cget("fg_color"), display.cget("text"), font=self.image_font_bold)
             elif kind in ("opening", "guard"):
                 opening = kind == "opening"
                 label = "Apertura" if opening else "Guardia"
                 heading_color = ("#B8E33D", "#466819") if opening else ("#B9D7EA", "#1F4E68")
-                self._cell(0, y0, self.NAME_WIDTH, y1, heading_color, label, font=self.image_font_bold, anchor="w")
+                self._cell(0, y0, self.name_width, y1, heading_color, label, font=self.image_font_bold, anchor="w")
                 values = self.opening_labels if opening else self.guard_labels
                 for day in range(7):
-                    x0, display = self.NAME_WIDTH + day * self.DAY_WIDTH, values[day]
-                    self._cell(x0, y0, x0 + self.DAY_WIDTH, y1, display.cget("fg_color"), display.cget("text"), display.cget("text_color"), self.image_font_small)
+                    x0, x1, display = self._day_x(day), self._day_x(day + 1), values[day]
+                    self._cell(x0, y0, x1, y1, display.cget("fg_color"), display.cget("text"), display.cget("text_color"), self.image_font_small)
             elif kind == "reminders":
-                self._cell(0, y0, self.TABLE_WIDTH, y1, ("#FFF3CD", "#55450D"), self.reminder_summary.cget("text"), font=self.image_font_small, anchor="w")
+                self._cell(0, y0, self.table_width, y1, ("#FFF3CD", "#55450D"), self.reminder_summary.cget("text"), font=self.image_font_small, anchor="w")
         self._draw = None
         self._table_image = ImageTk.PhotoImage(image)
         self.canvas.create_image(0, 0, image=self._table_image, anchor="nw", tags="table")
