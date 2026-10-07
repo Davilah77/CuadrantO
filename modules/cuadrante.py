@@ -146,12 +146,11 @@ class ScheduleModule:
         ctk.CTkLabel(self.toolbar, text="Cuadrante semanal", font=ctk.CTkFont(size=19, weight="bold")).pack(side="left", padx=15, pady=12)
         self.week_var = ctk.StringVar(value=date.today().strftime("%d/%m/%Y"))
         ctk.CTkEntry(self.toolbar, textvariable=self.week_var, width=130).pack(side="left", padx=5)
-        ctk.CTkButton(self.toolbar, text="Cargar semana", width=115, command=self.load_week).pack(side="left", padx=4)
+        ctk.CTkButton(self.toolbar, text="Guardar semana", width=120, command=self.save).pack(side="left", padx=4)
         ctk.CTkButton(self.toolbar, text="Ver semanas", width=105, command=self.open_saved_weeks).pack(side="left", padx=4)
         ctk.CTkButton(self.toolbar, text="Turnos", width=82, command=self.app.open_shift_manager).pack(side="right", padx=(4, 14))
         ctk.CTkButton(self.toolbar, text="Empleados", width=92, command=self.app.open_employee_manager).pack(side="right", padx=4)
         ctk.CTkButton(self.toolbar, text="Exportar PDF", width=105, command=self.export_pdf).pack(side="right", padx=4)
-        ctk.CTkButton(self.toolbar, text="Guardar", width=95, command=self.save).pack(side="right", padx=4)
         self.week_title = ctk.CTkLabel(self.parent, text="", font=ctk.CTkFont(size=15, weight="bold"))
         self.week_title.pack(pady=(2, 5))
 
