@@ -650,7 +650,7 @@ class ScheduleModule:
 
         ctk.CTkButton(actions, text="Quitar aviso", fg_color="#8B3A3A", command=clear_reminder).pack(side="left")
         ctk.CTkButton(actions, text="Guardar aviso", command=save_reminder).pack(side="right")
-        dialog.after_idle(lambda: apply_native_titlebar(dialog))
+        dialog.after_idle(lambda: apply_native_titlebar(dialog, redraw=True))
         return dialog
 
     def _dates(self):

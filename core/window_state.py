@@ -8,7 +8,7 @@ from core.settings import load_settings, save_settings
 GEOMETRY_RE = re.compile(r"^(\d+)x(\d+)([+-]\d+)([+-]\d+)$")
 
 
-def apply_native_titlebar(window) -> None:
+def apply_native_titlebar(window, redraw=False) -> None:
     """Match the Windows title bar to the application's saved theme."""
     if sys.platform != "win32":
         return
@@ -18,13 +18,19 @@ def apply_native_titlebar(window) -> None:
         window.update_idletasks()
         user32 = ctypes.windll.user32
         hwnd = user32.GetParent(window.winfo_id()) or window.winfo_id()
-        dark = ctypes.c_int(str(load_settings().get("appearance_mode", "Dark")).lower() == "dark")
+        dark_mode = str(load_settings().get("appearance_mode", "Dark")).lower() == "dark"
+        dark = ctypes.c_int(dark_mode)
         # Windows 10 used attribute 19 before standardising it as 20.
         for attribute in (20, 19):
             if ctypes.windll.dwmapi.DwmSetWindowAttribute(
                 hwnd, attribute, ctypes.byref(dark), ctypes.sizeof(dark)
             ) == 0:
                 break
+        # On some Windows 10 systems DWM accepts the attribute but does not
+        # repaint an already visible Tk title bar. CTk's redraw sequence hides
+        # and restores it briefly so the native change becomes visible.
+        if redraw and hasattr(window, "_windows_set_titlebar_color"):
+            window._windows_set_titlebar_color("dark" if dark_mode else "light")
         user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0027)
     except Exception:
         pass
