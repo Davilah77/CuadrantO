@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import messagebox
+from tkinter import ttk
 
 import customtkinter as ctk
 from PIL import Image, ImageDraw, ImageFont, ImageTk
@@ -92,6 +93,9 @@ class ScheduleModule:
         self.day_width = float(self.MIN_DAY_WIDTH)
         self.table_width = self.MIN_TABLE_WIDTH
         self._resize_job = None
+        self._scrollbar_job = None
+        self._hscroll_visible = True
+        self._vscroll_visible = True
         self._create_shared_fonts()
         self._build()
         self.load_week()
@@ -143,6 +147,7 @@ class ScheduleModule:
         self.week_var = ctk.StringVar(value=date.today().strftime("%d/%m/%Y"))
         ctk.CTkEntry(self.toolbar, textvariable=self.week_var, width=130).pack(side="left", padx=5)
         ctk.CTkButton(self.toolbar, text="Cargar semana", width=115, command=self.load_week).pack(side="left", padx=4)
+        ctk.CTkButton(self.toolbar, text="Ver semanas", width=105, command=self.open_saved_weeks).pack(side="left", padx=4)
         ctk.CTkButton(self.toolbar, text="Turnos", width=82, command=self.app.open_shift_manager).pack(side="right", padx=(4, 14))
         ctk.CTkButton(self.toolbar, text="Empleados", width=92, command=self.app.open_employee_manager).pack(side="right", padx=4)
         ctk.CTkButton(self.toolbar, text="Exportar PDF", width=105, command=self.export_pdf).pack(side="right", padx=4)
@@ -156,9 +161,11 @@ class ScheduleModule:
         self.vscroll = tk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
         self.hscroll = tk.Scrollbar(self.canvas_frame, orient="horizontal", command=self.canvas.xview)
         self.canvas.configure(yscrollcommand=self.vscroll.set, xscrollcommand=self.hscroll.set)
-        self.vscroll.pack(side="right", fill="y", padx=(0, 3), pady=3)
-        self.hscroll.pack(side="bottom", fill="x", padx=3, pady=(0, 3))
-        self.canvas.pack(side="left", fill="both", expand=True, padx=(3, 0), pady=(3, 0))
+        self.canvas_frame.grid_rowconfigure(0, weight=1)
+        self.canvas_frame.grid_columnconfigure(0, weight=1)
+        self.canvas.grid(row=0, column=0, sticky="nsew", padx=(3, 0), pady=(3, 0))
+        self.vscroll.grid(row=0, column=1, sticky="ns", padx=(0, 3), pady=3)
+        self.hscroll.grid(row=1, column=0, sticky="ew", padx=3, pady=(0, 3))
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<Configure>", self._on_canvas_configure)
         self.canvas.bind("<MouseWheel>", self._on_mousewheel)
@@ -286,6 +293,32 @@ class ScheduleModule:
         self._resize_job = None
         self._close_editor(commit=True)
         self._redraw()
+
+    def _schedule_scrollbar_update(self):
+        if self._scrollbar_job is None:
+            self._scrollbar_job = self.canvas.after_idle(self._update_scrollbars)
+
+    def _update_scrollbars(self):
+        self._scrollbar_job = None
+        if not self.rows:
+            return
+        need_horizontal = self.table_width > self.canvas.winfo_width() + 1
+        need_vertical = self.rows[-1]["y1"] + 4 > self.canvas.winfo_height() + 1
+        changed = False
+        if need_horizontal != self._hscroll_visible:
+            self._hscroll_visible = need_horizontal
+            (self.hscroll.grid if need_horizontal else self.hscroll.grid_remove)()
+            if not need_horizontal:
+                self.canvas.xview_moveto(0)
+            changed = True
+        if need_vertical != self._vscroll_visible:
+            self._vscroll_visible = need_vertical
+            (self.vscroll.grid if need_vertical else self.vscroll.grid_remove)()
+            if not need_vertical:
+                self.canvas.yview_moveto(0)
+            changed = True
+        if changed:
+            self.canvas.after_idle(self._schedule_scrollbar_update)
 
     def _on_canvas_click(self, event):
         self._close_editor(commit=True)
@@ -438,6 +471,71 @@ class ScheduleModule:
         self._draw = None
         self._table_image = ImageTk.PhotoImage(image)
         self.canvas.create_image(0, 0, image=self._table_image, anchor="nw", tags="table")
+        self._schedule_scrollbar_update()
+
+    def open_saved_weeks(self):
+        window = ctk.CTkToplevel(self.parent)
+        window.title("Semanas guardadas")
+        window.transient(self.app)
+        window.minsize(520, 360)
+        remember_window(window, "saved_weeks", "620x460")
+        ctk.CTkLabel(window, text="Semanas almacenadas", font=ctk.CTkFont(size=18, weight="bold")).pack(
+            anchor="w", padx=20, pady=(18, 8)
+        )
+        ctk.CTkLabel(window, text="Haz doble clic sobre una semana para cargarla.", text_color="gray").pack(
+            anchor="w", padx=20, pady=(0, 10)
+        )
+        frame = ctk.CTkFrame(window)
+        frame.pack(fill="both", expand=True, padx=20, pady=(0, 12))
+        style = ttk.Style(window)
+        style_name = "SavedWeeks.Treeview"
+        dark = ctk.get_appearance_mode().lower() == "dark"
+        style.configure(
+            style_name, background="#343638" if dark else "#F5F5F5",
+            fieldbackground="#343638" if dark else "#F5F5F5", foreground="#F3F3F3" if dark else "#111111",
+            rowheight=32, borderwidth=0,
+        )
+        style.configure(f"{style_name}.Heading", background="#4E555A" if dark else "#D9D9D9", foreground="#F3F3F3" if dark else "#111111")
+        style.map(style_name, background=[("selected", "#1F6AA5")], foreground=[("selected", "white")])
+        tree = ttk.Treeview(
+            frame, columns=("inicio", "separador", "fin"), show="headings", selectmode="browse", style=style_name,
+        )
+        tree.heading("inicio", text="Semana del")
+        tree.heading("separador", text="al")
+        tree.heading("fin", text="Hasta")
+        tree.column("inicio", width=190, anchor="center")
+        tree.column("separador", width=45, anchor="center", stretch=False)
+        tree.column("fin", width=190, anchor="center")
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
+        scrollbar.pack(side="right", fill="y", padx=(0, 8), pady=8)
+
+        with connect() as conn:
+            stored_dates = [row[0] for row in conn.execute(
+                "SELECT fecha FROM clientes UNION SELECT fecha FROM asignaciones ORDER BY fecha DESC"
+            )]
+        mondays = sorted({parse_week(value).isoformat() for value in stored_dates}, reverse=True)
+        for value in mondays:
+            monday = date.fromisoformat(value)
+            tree.insert("", "end", iid=value, values=(f"{monday:%d/%m/%Y}", "al", f"{monday + timedelta(days=6):%d/%m/%Y}"))
+
+        if not mondays:
+            ctk.CTkLabel(frame, text="Todavía no hay semanas guardadas.", text_color="gray").place(relx=0.5, rely=0.5, anchor="center")
+
+        def load_selected(_event=None):
+            selected = tree.selection()
+            if not selected:
+                return
+            monday = date.fromisoformat(selected[0])
+            self.week_var.set(monday.strftime("%d/%m/%Y"))
+            window.destroy()
+            self.load_week()
+
+        tree.bind("<Double-1>", load_selected)
+        tree.bind("<Return>", load_selected)
+        ctk.CTkButton(window, text="Cargar semana", command=load_selected).pack(pady=(0, 16))
+        return window
 
     def apply_appearance(self):
         self.toolbar.configure(bg=self._theme_color(TABLE_SURFACE))

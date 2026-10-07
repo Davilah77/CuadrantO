@@ -74,15 +74,15 @@ class CuadranteApp(ctk.CTk):
 
     def _build_header(self):
         header = ctk.CTkFrame(self, corner_radius=10)
-        header.pack(fill="x", padx=15, pady=(15, 5))
+        header.pack(fill="x", padx=15, pady=(8, 4))
         self.product_icon_label = ctk.CTkLabel(header, text="", width=1)
-        self.product_icon_label.pack(side="left", padx=(15, 0), pady=8)
+        self.product_icon_label.pack(side="left", padx=(10, 0), pady=4)
         self.logo_label = ctk.CTkLabel(header, text="", width=1)
         titles = ctk.CTkFrame(header, fg_color="transparent")
-        titles.pack(side="left", padx=15, pady=14)
-        self.title_label = ctk.CTkLabel(titles, text="", font=ctk.CTkFont(size=22, weight="bold"))
+        titles.pack(side="left", padx=10, pady=4)
+        self.title_label = ctk.CTkLabel(titles, text="", font=ctk.CTkFont(size=18, weight="bold"), height=22)
         self.title_label.pack(anchor="w")
-        self.subtitle_label = ctk.CTkLabel(titles, text="", text_color="gray")
+        self.subtitle_label = ctk.CTkLabel(titles, text="", text_color="gray", font=ctk.CTkFont(size=11), height=16)
         self.subtitle_label.pack(anchor="w")
         self.theme_switch = ctk.CTkSwitch(header, text="Modo oscuro", command=self._toggle_theme)
         if str(load_settings().get("appearance_mode", "Dark")).lower() == "dark":
@@ -136,7 +136,7 @@ class CuadranteApp(ctk.CTk):
                 self._window_icon = ImageTk.PhotoImage(window_icon)
                 self.iconphoto(True, self._window_icon)
                 header_icon = icon_image.copy()
-                header_icon.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                header_icon.thumbnail((40, 40), Image.Resampling.LANCZOS)
                 self._product_icon_image = ctk.CTkImage(light_image=header_icon, dark_image=header_icon, size=header_icon.size)
                 self.product_icon_label.configure(image=self._product_icon_image)
             except OSError:
@@ -152,11 +152,11 @@ class CuadranteApp(ctk.CTk):
         if path and path.is_file():
             try:
                 image = Image.open(path).convert("RGBA")
-                image.thumbnail((64, 64), Image.Resampling.LANCZOS)
+                image.thumbnail((40, 40), Image.Resampling.LANCZOS)
                 self._logo_image = ctk.CTkImage(light_image=image, dark_image=image, size=image.size)
                 self.logo_label.configure(image=self._logo_image)
                 if not self.logo_label.winfo_manager():
-                    self.logo_label.pack(side="left", padx=(15, 0), pady=8, before=self.title_label.master)
+                    self.logo_label.pack(side="left", padx=(10, 0), pady=4, before=self.title_label.master)
                 return
             except OSError:
                 pass
