@@ -6,7 +6,7 @@ from core.database import connect, transaction
 from core.window_state import remember_window
 
 
-CATEGORIES = ("MAITRE", "JEFES DE SECTOR", "CAMAREROS", "ETT")
+CATEGORIES = ("MAITRE", "SEGUNDO MAITRE", "JEFES DE SECTOR", "CAMAREROS", "ETT")
 
 
 def employee_manager(app, on_change):
@@ -23,7 +23,10 @@ def employee_manager(app, on_change):
         for child in listing.winfo_children():
             child.destroy()
         with connect() as conn:
-            rows = conn.execute("SELECT id,categoria,nombre FROM empleados WHERE activo=1 ORDER BY orden,nombre").fetchall()
+            rows = conn.execute("""SELECT id,categoria,nombre FROM empleados WHERE activo=1 ORDER BY
+                CASE categoria WHEN 'MAITRE' THEN 10 WHEN 'SEGUNDO MAITRE' THEN 20
+                WHEN 'JEFES DE SECTOR' THEN 30 WHEN 'CAMAREROS' THEN 40 WHEN 'ETT' THEN 50 ELSE 60 END,
+                orden,nombre""").fetchall()
         for col, text in enumerate(("Categoría", "Empleado", "")):
             ctk.CTkLabel(listing, text=text, font=ctk.CTkFont(weight="bold"), anchor="w").grid(row=0, column=col, sticky="ew", padx=5, pady=5)
         for index, row in enumerate(rows, start=1):

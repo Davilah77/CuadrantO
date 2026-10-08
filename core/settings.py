@@ -18,6 +18,12 @@ DEFAULT_SETTINGS = {
     "check_updates_on_start": True,
     "include_prereleases": True,
     "window_layouts": {},
+    "coverage_mode": "manual",
+    "automatic_coverage": {
+        "count_maitre": True,
+        "count_second_maitre": True,
+        "count_sector_heads": True,
+    },
     "coverage": {
         "desayuno": {"yellow": 4, "green": 5, "purple": 6},
         "almuerzo": {"yellow": 5, "green": 6, "purple": 7},
@@ -29,15 +35,19 @@ DEFAULT_SETTINGS = {
 def load_settings() -> dict:
     settings = dict(DEFAULT_SETTINGS)
     settings["coverage"] = {key: dict(value) for key, value in DEFAULT_SETTINGS["coverage"].items()}
+    settings["automatic_coverage"] = dict(DEFAULT_SETTINGS["automatic_coverage"])
     try:
         saved = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
         if isinstance(saved, dict):
             coverage = saved.pop("coverage", None)
+            automatic_coverage = saved.pop("automatic_coverage", None)
             settings.update(saved)
             if isinstance(coverage, dict):
                 for service, values in coverage.items():
                     if service in settings["coverage"] and isinstance(values, dict):
                         settings["coverage"][service].update(values)
+            if isinstance(automatic_coverage, dict):
+                settings["automatic_coverage"].update(automatic_coverage)
     except (OSError, TypeError, json.JSONDecodeError):
         pass
     return settings

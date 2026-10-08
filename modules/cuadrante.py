@@ -43,6 +43,22 @@ def parse_week(value: str) -> date:
     raise ValueError("Escribe una fecha válida, por ejemplo 21/09/2026.")
 
 
+def automatic_workers_required(clients: int) -> int:
+    """Return the agreed staffing ratio: 1–199=1, 200–299=2, etc."""
+    clients = max(0, int(clients))
+    return 0 if clients == 0 else max(1, clients // 100)
+
+
+def category_counts_for_automatic_coverage(category: str, settings: dict) -> bool:
+    options = settings.get("automatic_coverage", {})
+    rules = {
+        "MAITRE": "count_maitre",
+        "SEGUNDO MAITRE": "count_second_maitre",
+        "JEFES DE SECTOR": "count_sector_heads",
+    }
+    return bool(options.get(rules[category], True)) if category in rules else category in ("CAMAREROS", "ETT")
+
+
 def build_cuadrante(parent, app):
     parent._controller = ScheduleModule(parent, app)
 
@@ -175,7 +191,10 @@ class ScheduleModule:
 
     def _load_catalogues(self):
         with connect() as conn:
-            self.employees = conn.execute("SELECT id,categoria,nombre FROM empleados WHERE activo=1 ORDER BY orden,nombre").fetchall()
+            self.employees = conn.execute("""SELECT id,categoria,nombre FROM empleados WHERE activo=1 ORDER BY
+                CASE categoria WHEN 'MAITRE' THEN 10 WHEN 'SEGUNDO MAITRE' THEN 20
+                WHEN 'JEFES DE SECTOR' THEN 30 WHEN 'CAMAREROS' THEN 40 WHEN 'ETT' THEN 50 ELSE 60 END,
+                orden,nombre""").fetchall()
             shift_rows = conn.execute("SELECT * FROM turnos WHERE activo=1 ORDER BY orden,codigo").fetchall()
         self.shifts = {row["codigo"]: dict(row) for row in shift_rows}
         self.options = list(SPECIAL_VALUES) + list(self.shifts)
@@ -385,7 +404,10 @@ class ScheduleModule:
         if item is not None:
             self.canvas.delete(item)
         editor.destroy()
-        self._redraw()
+        if commit:
+            self.recalculate()
+        else:
+            self._redraw()
 
     def _cell(self, x0, y0, x1, y1, fill, text="", text_color=None, font=None, anchor="center"):
         fill = self._theme_color(fill)
@@ -688,6 +710,7 @@ class ScheduleModule:
 
     def recalculate(self):
         settings = load_settings()
+        automatic = settings.get("coverage_mode") == "automatic"
         employee_names = {row["id"]: row["nombre"] for row in self.employees}
         for day_index in range(7):
             counts = {service: 0 for service in ("desayuno", "almuerzo", "cena")}
@@ -696,16 +719,27 @@ class ScheduleModule:
                 shift = self.shifts.get(self.assignment_vars[(employee["id"], day_index)].get())
                 if not shift:
                     continue
-                for service in counts:
-                    counts[service] += int(bool(shift[service]))
+                if not automatic or category_counts_for_automatic_coverage(employee["categoria"], settings):
+                    for service in counts:
+                        counts[service] += int(bool(shift[service]))
                 if shift["apertura"]:
                     openings.append(employee_names[employee["id"]])
                 if shift.get("guardia"):
                     guards.append(employee_names[employee["id"]])
             for service, count in counts.items():
-                limits = settings["coverage"][service]
-                color = "purple" if count >= int(limits["purple"]) else "green" if count >= int(limits["green"]) else "yellow" if count >= int(limits["yellow"]) else "red"
-                self.coverage_labels[(service, day_index)].configure(text=str(count), fg_color=COVERAGE_COLORS[color])
+                if automatic:
+                    try:
+                        clients = int(self.client_vars[(service, day_index)].get().strip() or "0")
+                    except ValueError:
+                        clients = 0
+                    required = automatic_workers_required(clients)
+                    color = "red" if count < required else "green" if count == required else "purple"
+                    text = f"{count} / {required}"
+                else:
+                    limits = settings["coverage"][service]
+                    color = "purple" if count >= int(limits["purple"]) else "green" if count >= int(limits["green"]) else "yellow" if count >= int(limits["yellow"]) else "red"
+                    text = str(count)
+                self.coverage_labels[(service, day_index)].configure(text=text, fg_color=COVERAGE_COLORS[color])
             opening_label = self.opening_labels[day_index]
             if len(openings) > 1:
                 opening_label.configure(text="DUPLICADO: " + " / ".join(openings), fg_color=VALUE_COLORS["FALTA"], text_color="white")

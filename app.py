@@ -319,9 +319,37 @@ class CuadranteApp(ctk.CTk):
         ctk.CTkSwitch(body, text="Incluir versiones beta", variable=include_prereleases).pack(anchor="w", pady=4)
         ctk.CTkLabel(body, text="La instalación siempre solicitará confirmación y creará una copia de seguridad.", text_color="gray").pack(anchor="w", pady=(0, 8))
 
-        heading("Cobertura mínima por servicio")
-        ctk.CTkLabel(body, text="Amarillo avisa de cobertura justa; verde es la dotación prevista; morado indica personal por encima de la previsión.", text_color="gray", wraplength=700, justify="left").pack(anchor="w", pady=(0, 8))
+        heading("Cobertura de trabajadores por servicio")
+        coverage_mode = ctk.StringVar(value="Automático por clientes" if current.get("coverage_mode") == "automatic" else "Manual")
+        mode_row = ctk.CTkFrame(body, fg_color="transparent")
+        mode_row.pack(fill="x", pady=(0, 8))
+        ctk.CTkLabel(mode_row, text="Modo de cálculo").pack(side="left")
+        ctk.CTkOptionMenu(mode_row, variable=coverage_mode, values=["Manual", "Automático por clientes"], width=210).pack(side="right")
+        ctk.CTkLabel(
+            body,
+            text="En automático: 1–199 clientes requieren 1 trabajador, 200–299 requieren 2, y así sucesivamente.",
+            text_color="gray", wraplength=700, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        automatic_frame = ctk.CTkFrame(body)
+        automatic_frame.pack(fill="x", pady=(0, 8))
+        ctk.CTkLabel(automatic_frame, text="Categorías que cuentan en el modo automático", font=ctk.CTkFont(weight="bold")).pack(anchor="w", padx=10, pady=(8, 3))
+        automatic_settings = current.get("automatic_coverage", {})
+        count_maitre = ctk.BooleanVar(value=bool(automatic_settings.get("count_maitre", True)))
+        count_second_maitre = ctk.BooleanVar(value=bool(automatic_settings.get("count_second_maitre", True)))
+        count_sector_heads = ctk.BooleanVar(value=bool(automatic_settings.get("count_sector_heads", True)))
+        automatic_switches = (
+            ctk.CTkSwitch(automatic_frame, text="Contar maitre", variable=count_maitre),
+            ctk.CTkSwitch(automatic_frame, text="Contar segundo maitre", variable=count_second_maitre),
+            ctk.CTkSwitch(automatic_frame, text="Contar jefes de sector", variable=count_sector_heads),
+        )
+        for switch in automatic_switches:
+            switch.pack(anchor="w", padx=10, pady=3)
+        ctk.CTkLabel(automatic_frame, text="Camareros y ETT se cuentan siempre.", text_color="gray").pack(anchor="w", padx=10, pady=(3, 8))
+
+        ctk.CTkLabel(body, text="En manual: amarillo avisa de cobertura justa; verde es la dotación prevista; morado indica personal por encima.", text_color="gray", wraplength=700, justify="left").pack(anchor="w", pady=(0, 8))
         coverage_vars = {}
+        manual_entries = []
         for service in ("desayuno", "almuerzo", "cena"):
             row = ctk.CTkFrame(body)
             row.pack(fill="x", pady=3)
@@ -330,7 +358,19 @@ class CuadranteApp(ctk.CTk):
                 ctk.CTkLabel(row, text=label).pack(side="left", padx=(8, 3))
                 variable = ctk.StringVar(value=str(current["coverage"][service][key]))
                 coverage_vars[(service, key)] = variable
-                ctk.CTkEntry(row, textvariable=variable, width=45, justify="center").pack(side="left")
+                entry = ctk.CTkEntry(row, textvariable=variable, width=45, justify="center")
+                entry.pack(side="left")
+                manual_entries.append(entry)
+
+        def update_coverage_controls(*_args):
+            automatic_mode = coverage_mode.get() == "Automático por clientes"
+            for switch in automatic_switches:
+                switch.configure(state="normal" if automatic_mode else "disabled")
+            for entry in manual_entries:
+                entry.configure(state="disabled" if automatic_mode else "normal")
+
+        coverage_mode.trace_add("write", update_coverage_controls)
+        update_coverage_controls()
 
         def save():
             try:
@@ -348,6 +388,12 @@ class CuadranteApp(ctk.CTk):
                     "font_scale": scale, "reports_directory": reports.get().strip(),
                     "database_path": database.get().strip(), "backup_on_start": backup_enabled.get(),
                     "backup_directory": backup.get().strip(), "coverage": coverage,
+                    "coverage_mode": "automatic" if coverage_mode.get() == "Automático por clientes" else "manual",
+                    "automatic_coverage": {
+                        "count_maitre": count_maitre.get(),
+                        "count_second_maitre": count_second_maitre.get(),
+                        "count_sector_heads": count_sector_heads.get(),
+                    },
                     "check_updates_on_start": check_updates_on_start.get(),
                     "include_prereleases": include_prereleases.get(),
                 }

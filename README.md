@@ -11,7 +11,7 @@ Aplicación de escritorio para crear y controlar los cuadrantes semanales del re
 - Recuento de trabajadores por desayuno, almuerzo y cena sin depender de las letras del código.
 - Aviso de apertura ausente o duplicada.
 - Gestión de empleados y catálogo de turnos.
-- Umbrales de cobertura configurables.
+- Cobertura manual o automática según clientes, con categorías configurables.
 - Tema claro/oscuro persistente, nombre, logo y tamaño de fuente.
 - Posición, tamaño y estado maximizado recordados para la ventana principal y las ventanas auxiliares.
 - Icono propio de CuadrantO separado del logo configurable de la empresa.

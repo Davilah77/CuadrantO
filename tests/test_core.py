@@ -14,7 +14,7 @@ from core import settings
 from core import updater
 from core.updater import UpdateInfo, is_newer, version_key
 from core.window_state import _visible_geometry
-from modules.cuadrante import parse_week
+from modules.cuadrante import automatic_workers_required, category_counts_for_automatic_coverage, parse_week
 
 
 class CuadranteTests(unittest.TestCase):
@@ -38,6 +38,27 @@ class CuadranteTests(unittest.TestCase):
     def test_week_is_normalized_to_monday(self):
         self.assertEqual(parse_week("23/09/2026"), date(2026, 9, 21))
         self.assertEqual(parse_week("2026-09-27"), date(2026, 9, 21))
+
+    def test_automatic_coverage_ratio_boundaries(self):
+        expected = {
+            0: 0, 1: 1, 99: 1, 100: 1, 199: 1,
+            200: 2, 299: 2, 300: 3, 621: 6, 1024: 10,
+        }
+        for clients, workers in expected.items():
+            with self.subTest(clients=clients):
+                self.assertEqual(automatic_workers_required(clients), workers)
+
+    def test_automatic_coverage_category_switches(self):
+        values = {"automatic_coverage": {
+            "count_maitre": False,
+            "count_second_maitre": True,
+            "count_sector_heads": False,
+        }}
+        self.assertFalse(category_counts_for_automatic_coverage("MAITRE", values))
+        self.assertTrue(category_counts_for_automatic_coverage("SEGUNDO MAITRE", values))
+        self.assertFalse(category_counts_for_automatic_coverage("JEFES DE SECTOR", values))
+        self.assertTrue(category_counts_for_automatic_coverage("CAMAREROS", values))
+        self.assertTrue(category_counts_for_automatic_coverage("ETT", values))
 
     def test_default_catalogues_are_created_once(self):
         database.initialize_database()
