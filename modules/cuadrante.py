@@ -61,10 +61,10 @@ def category_counts_for_automatic_coverage(category: str, settings: dict) -> boo
 
 def coverage_legend(mode: str):
     if mode == "automatic":
-        return (("red", "Faltan camareros"), ("green", "OK"), ("purple", "Exceso de camareros"))
+        return (("red", "Faltan camareros"), ("green", "Servicio cubierto"), ("purple", "Exceso de camareros"))
     return (
-        ("red", "Falta"), ("yellow", "Falta, pero se puede dar el servicio"),
-        ("green", "OK"), ("purple", "Sobra"),
+        ("red", "Faltan camareros"), ("yellow", "Faltan camareros, servicio viable"),
+        ("green", "Servicio cubierto"), ("purple", "Exceso de camareros"),
     )
 
 
@@ -517,7 +517,7 @@ class ScheduleModule:
         x = self.table_width - 10 - sum(widths) - item_gap * (len(entries) - 1)
         # On very narrow/scaled layouts, keep the title readable and shorten the longest explanation.
         if x < self.name_width:
-            entries = (("red", "Falta"), ("yellow", "Servicio posible"), ("green", "OK"), ("purple", "Sobra")) if self._coverage_mode != "automatic" else (("red", "Faltan"), ("green", "OK"), ("purple", "Exceso"))
+            entries = (("red", "Faltan"), ("yellow", "Servicio viable"), ("green", "Cubierto"), ("purple", "Exceso")) if self._coverage_mode != "automatic" else (("red", "Faltan"), ("green", "Cubierto"), ("purple", "Exceso"))
             widths = []
             for _color, label in entries:
                 bounds = self._draw.textbbox((0, 0), label, font=self.image_font_small)
