@@ -59,6 +59,15 @@ def category_counts_for_automatic_coverage(category: str, settings: dict) -> boo
     return bool(options.get(rules[category], True)) if category in rules else category in ("CAMAREROS", "ETT")
 
 
+def coverage_legend(mode: str):
+    if mode == "automatic":
+        return (("red", "Faltan camareros"), ("green", "OK"), ("purple", "Exceso de camareros"))
+    return (
+        ("red", "Falta"), ("yellow", "Falta, pero se puede dar el servicio"),
+        ("green", "OK"), ("purple", "Sobra"),
+    )
+
+
 def build_cuadrante(parent, app):
     parent._controller = ScheduleModule(parent, app)
 
@@ -110,6 +119,7 @@ class ScheduleModule:
         self.table_width = self.MIN_TABLE_WIDTH
         self._resize_job = None
         self._scrollbar_job = None
+        self._coverage_mode = str(load_settings().get("coverage_mode", "manual"))
         self._hscroll_visible = True
         self._vscroll_visible = True
         self._create_shared_fonts()
@@ -448,6 +458,8 @@ class ScheduleModule:
                     self._cell(x0, y0, x1, y1, TABLE_SURFACE, title, font=self.image_font_heading)
             elif kind == "section":
                 self._cell(0, y0, self.table_width, y1, ("#F4E84A", "#756D10"), row["title"], ("#111111", "white"), self.image_font_bold, "w")
+                if row["title"] == "Trabajadores en servicio":
+                    self._draw_coverage_legend(y0, y1)
             elif kind == "employee":
                 employee, name_end = row["employee"], self.name_width
                 if employee["categoria"] == "ETT":
@@ -493,6 +505,32 @@ class ScheduleModule:
         self._table_image = ImageTk.PhotoImage(image)
         self.canvas.create_image(0, 0, image=self._table_image, anchor="nw", tags="table")
         self._schedule_scrollbar_update()
+
+    def _draw_coverage_legend(self, y0, y1):
+        entries = coverage_legend(self._coverage_mode)
+        text_color = self._theme_color(("#111111", "white"))
+        box_size, gap, item_gap = 12, 5, 16
+        widths = []
+        for _color, label in entries:
+            bounds = self._draw.textbbox((0, 0), label, font=self.image_font_small)
+            widths.append(box_size + gap + bounds[2] - bounds[0])
+        x = self.table_width - 10 - sum(widths) - item_gap * (len(entries) - 1)
+        # On very narrow/scaled layouts, keep the title readable and shorten the longest explanation.
+        if x < self.name_width:
+            entries = (("red", "Falta"), ("yellow", "Servicio posible"), ("green", "OK"), ("purple", "Sobra")) if self._coverage_mode != "automatic" else (("red", "Faltan"), ("green", "OK"), ("purple", "Exceso"))
+            widths = []
+            for _color, label in entries:
+                bounds = self._draw.textbbox((0, 0), label, font=self.image_font_small)
+                widths.append(box_size + gap + bounds[2] - bounds[0])
+            x = max(self.name_width, self.table_width - 10 - sum(widths) - item_gap * (len(entries) - 1))
+        center_y = (y0 + y1) / 2
+        for (color, label), width in zip(entries, widths):
+            fill = self._theme_color(COVERAGE_COLORS[color])
+            self._draw.rounded_rectangle(
+                (x, center_y - box_size / 2, x + box_size, center_y + box_size / 2), radius=3, fill=fill,
+            )
+            self._draw.text((x + box_size + gap, center_y), label, fill=text_color, font=self.image_font_small, anchor="lm")
+            x += width + item_gap
 
     def open_saved_weeks(self):
         window = ctk.CTkToplevel(self.parent)
@@ -711,6 +749,7 @@ class ScheduleModule:
     def recalculate(self):
         settings = load_settings()
         automatic = settings.get("coverage_mode") == "automatic"
+        self._coverage_mode = "automatic" if automatic else "manual"
         employee_names = {row["id"]: row["nombre"] for row in self.employees}
         for day_index in range(7):
             counts = {service: 0 for service in ("desayuno", "almuerzo", "cena")}

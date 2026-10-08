@@ -14,7 +14,7 @@ from core import settings
 from core import updater
 from core.updater import UpdateInfo, is_newer, version_key
 from core.window_state import _visible_geometry
-from modules.cuadrante import automatic_workers_required, category_counts_for_automatic_coverage, parse_week
+from modules.cuadrante import automatic_workers_required, category_counts_for_automatic_coverage, coverage_legend, parse_week
 
 
 class CuadranteTests(unittest.TestCase):
@@ -59,6 +59,10 @@ class CuadranteTests(unittest.TestCase):
         self.assertFalse(category_counts_for_automatic_coverage("JEFES DE SECTOR", values))
         self.assertTrue(category_counts_for_automatic_coverage("CAMAREROS", values))
         self.assertTrue(category_counts_for_automatic_coverage("ETT", values))
+
+    def test_coverage_legend_changes_with_mode(self):
+        self.assertEqual([color for color, _label in coverage_legend("automatic")], ["red", "green", "purple"])
+        self.assertEqual([color for color, _label in coverage_legend("manual")], ["red", "yellow", "green", "purple"])
 
     def test_default_catalogues_are_created_once(self):
         database.initialize_database()
