@@ -347,19 +347,34 @@ class CuadranteApp(ctk.CTk):
             switch.pack(anchor="w", padx=10, pady=3)
         ctk.CTkLabel(automatic_frame, text="Camareros y ETT se cuentan siempre.", text_color="gray").pack(anchor="w", padx=10, pady=(3, 8))
 
-        ctk.CTkLabel(body, text="En manual: amarillo avisa de cobertura justa; verde es la dotación prevista; morado indica personal por encima.", text_color="gray", wraplength=700, justify="left").pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(
+            body,
+            text="En manual, una cantidad inferior al primer nivel significa «Faltan camareros».",
+            text_color="gray", wraplength=700, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
         coverage_vars = {}
         manual_entries = []
-        for service in ("desayuno", "almuerzo", "cena"):
-            row = ctk.CTkFrame(body)
-            row.pack(fill="x", pady=3)
-            ctk.CTkLabel(row, text=service.title(), width=115, anchor="w").pack(side="left", padx=10, pady=8)
-            for label, key in (("Amarillo", "yellow"), ("Verde", "green"), ("Morado", "purple")):
-                ctk.CTkLabel(row, text=label).pack(side="left", padx=(8, 3))
+        manual_frame = ctk.CTkFrame(body)
+        manual_frame.pack(fill="x", pady=3)
+        headers = (
+            "Servicio", "Faltan camareros,\nservicio viable",
+            "Servicio cubierto", "Exceso de\ncamareros",
+        )
+        for column, label in enumerate(headers):
+            manual_frame.grid_columnconfigure(column, weight=1 if column else 0)
+            ctk.CTkLabel(
+                manual_frame, text=label, font=ctk.CTkFont(weight="bold"),
+                width=115 if column == 0 else 150,
+            ).grid(row=0, column=column, padx=6, pady=(8, 4), sticky="ew")
+        for row_index, service in enumerate(("desayuno", "almuerzo", "cena"), start=1):
+            ctk.CTkLabel(manual_frame, text=service.title(), width=115, anchor="w").grid(
+                row=row_index, column=0, padx=10, pady=5, sticky="w",
+            )
+            for column, key in enumerate(("yellow", "green", "purple"), start=1):
                 variable = ctk.StringVar(value=str(current["coverage"][service][key]))
                 coverage_vars[(service, key)] = variable
-                entry = ctk.CTkEntry(row, textvariable=variable, width=45, justify="center")
-                entry.pack(side="left")
+                entry = ctk.CTkEntry(manual_frame, textvariable=variable, width=70, justify="center")
+                entry.grid(row=row_index, column=column, padx=8, pady=5)
                 manual_entries.append(entry)
 
         def update_coverage_controls(*_args):
